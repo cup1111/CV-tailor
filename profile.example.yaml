@@ -1,0 +1,50 @@
+# Copy this file to profile.yaml and fill in your own data.
+# profile.yaml is gitignored and will not be committed.
+
+personal:
+  name: "Your Name"
+  email: "your.email@example.com"
+  phone: "+1 234 567 8900"
+  linkedin: "https://linkedin.com/in/yourprofile"
+  github: "https://github.com/yourusername"
+
+experiences:
+  - company: "Company A"
+    role: "Software Engineer"
+    startDate: "2022-01"
+    endDate: "Present"
+    bulletCount: 2
+    wordCount: "20-25"
+    description: |
+      Your original job description and responsibilities here.
+      List key projects, technologies, and outcomes.
+
+  - company: "Company B"
+    role: "Junior Developer"
+    startDate: "2020-06"
+    endDate: "2021-12"
+    bulletCount: 2
+    wordCount: "20-25"
+    description: |
+      Another role description. Be factual; the generator will use this
+      to produce resume bullets aligned to each job description.
+
+education:
+  - school: "Your University"
+    degree: "Bachelor of Science"
+    field: "Computer Science"
+    startDate: "2016-09"
+    endDate: "2020-06"
+
+skills:
+  - "JavaScript"
+  - "TypeScript"
+  - "React"
+  - "Node.js"
+  - "Python"
+  - "SQL"
+  - "Git"
+
+additionalInfo:
+  certifications: []
+  awards: []

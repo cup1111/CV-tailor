@@ -1,0 +1,59 @@
+import { readFileSync, existsSync } from 'fs';
+import { join } from 'path';
+import { z } from 'zod';
+
+const TemplateSchema = z.object({
+  systemPrompt: z.string(),
+  userPrompt: z.string(),
+  temperature: z.number().optional(),
+  maxTokens: z.number().optional(),
+});
+
+export type Template = z.infer<typeof TemplateSchema>;
+
+/**
+ * Load a template by name and optional locale (en | zh).
+ * If lang is set, tries templates/{lang}/{name}.jsonprompt first, then templates/{name}.jsonprompt.
+ */
+export function loadTemplate(templateName: string, lang?: string): Template {
+  const templatesDir = join(process.cwd(), 'templates');
+  let templatePath = lang ? join(templatesDir, lang, `${templateName}.jsonprompt`) : join(templatesDir, `${templateName}.jsonprompt`);
+  if (lang && !existsSync(templatePath)) {
+    templatePath = join(templatesDir, `${templateName}.jsonprompt`);
+  }
+  try {
+    const content = readFileSync(templatePath, 'utf-8');
+    const json = JSON.parse(content);
+    return TemplateSchema.parse(json);
+  } catch (error) {
+    throw new Error(
+      `Failed to load template ${templateName}${lang ? ` (lang=${lang})` : ''}: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
+}
+
+/**
+ * 替换模板中的变量
+ * 支持 {{variable}} 格式的变量替换
+ */
+export function renderTemplate(
+  template: Template,
+  variables: Record<string, string>
+): Template {
+  const replaceVariables = (text: string): string => {
+    return text.replace(/\{\{(\w+)\}\}/g, (match, key) => {
+      if (key in variables) {
+        return variables[key];
+      }
+      console.warn(`Template variable ${key} not found, keeping placeholder`);
+      return match;
+    });
+  };
+
+  return {
+    systemPrompt: replaceVariables(template.systemPrompt),
+    userPrompt: replaceVariables(template.userPrompt),
+    temperature: template.temperature,
+    maxTokens: template.maxTokens,
+  };
+}

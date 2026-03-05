@@ -1,0 +1,41 @@
+{
+  "name": "resume-pack-generator",
+  "version": "1.0.0",
+  "description": "CLI tool to automate job application material generation",
+  "type": "module",
+  "main": "dist/cli.js",
+  "bin": {
+    "resume-pack-generator": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/cli.ts",
+    "ingest": "tsx src/cli.ts ingest",
+    "generate": "tsx src/cli.ts generate",
+    "start": "node dist/cli.js"
+  },
+  "keywords": [
+    "resume",
+    "cv",
+    "job-application",
+    "cli"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "commander": "^11.1.0",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "js-yaml": "^4.1.0",
+    "openai": "^4.20.1",
+    "p-limit": "^5.0.0",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^20.10.5",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3"
+  }
+}
