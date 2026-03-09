@@ -37,6 +37,8 @@ export const ProfileSchema = z.object({
   education: z.array(EducationSchema).optional(),
   skills: z.array(z.string()).optional(),
   additionalInfo: AdditionalInfoSchema.optional(),
+  /** When true, mapping step allocates bullet count per experience by JD relevance; profile bulletCount is ignored. */
+  autoAllocateBullets: z.boolean().optional(),
 });
 
 export type Personal = z.infer<typeof PersonalSchema>;

@@ -1,6 +1,11 @@
 # Copy this file to profile.yaml and fill in your own data.
 # profile.yaml is gitignored and will not be committed.
 
+# Optional: when true, bullet count per experience is decided by the mapping step
+# based on JD relevance (more relevant = more bullets). When false or unset, uses
+# each experience's bulletCount in profile.
+# autoAllocateBullets: true
+
 personal:
   name: "Your Name"
   email: "your.email@example.com"

@@ -215,8 +215,68 @@ async function generatePainPoints(
   }
 }
 
+/** 按 JD 重要程度分配 bullet 条数的说明（中文） */
+const BULLET_ALLOCATION_INSTRUCTION_ZH =
+  '请根据 JD 与痛点，为下面 EXPERIENCE LIST 中的每条经历分配 bullet 条数与字数要求。原则：与 JD/痛点越相关的经历分配越多条（1–4 条）。约束：每条经历 1–4 条；第一条经历至少 2 条；全部经历总条数建议 10–14（经历少于 4 段时可 8–12）；字数写 "20-25" 或 "25-30"。若提供了公司画像，对第一条经历在要求末尾加：For the first experience add 1–2 bullets tied to the target company if company profile provided. 输出格式：每行一条，形如 Experience N (公司 - 角色): Write EXACTLY X bullet point(s), each approximately Y words. [首条可加上述额外句]';
+
+/** 按 JD 重要程度分配 bullet 条数的说明（英文） */
+const BULLET_ALLOCATION_INSTRUCTION_EN =
+  'Allocate bullet counts per experience based on relevance to the JD and pain points. More relevant experiences get more bullets (1–4 each). Constraints: 1–4 bullets per experience; first experience at least 2; total bullets 10–14 (or 8–12 if fewer than 4 experiences). Word count per bullet: "20-25" or "25-30". For the first experience, if company profile was provided, append: For the first experience add 1–2 bullets tied to the target company if company profile provided. Output one line per experience: Experience N (Company - Role): Write EXACTLY X bullet point(s), each approximately Y words.';
+
 /**
- * Step 3: 经历映射
+ * 从 profile 构建「每条经历写作要求」和「经历列表」，供 mapping 输出后给 Step 4/regenerate 使用
+ */
+function buildBulletRequirementsAndExperienceList(profile: Profile): {
+  bulletRequirements: string;
+  experienceList: string;
+} {
+  const lines: string[] = [];
+  const listLines: string[] = [];
+  profile.experiences.forEach((exp, index) => {
+    const bulletCount = exp.bulletCount ?? 2;
+    const isFirst = index === 0;
+    const extra = isFirst
+      ? ' For the first experience add 1–2 bullets tied to the target company if company profile provided.'
+      : '';
+    const wordCount = exp.wordCount
+      ? typeof exp.wordCount === 'string'
+        ? exp.wordCount
+        : `${exp.wordCount}-${exp.wordCount + 5}`
+      : '20-25';
+    lines.push(
+      `Experience ${index + 1} (${exp.company} - ${exp.role}): Write EXACTLY ${bulletCount} bullet point(s), each approximately ${wordCount} words.${extra}`
+    );
+    listLines.push(`${exp.company} - ${exp.role}`);
+  });
+  return {
+    bulletRequirements: lines.join('\n'),
+    experienceList: listLines.join('\n'),
+  };
+}
+
+/**
+ * 构建 mapping 中 PER-EXPERIENCE BULLET REQUIREMENTS 段的占位内容：
+ * 若启用 autoAllocateBullets 则传入「按说明生成」的指引，否则传入「照抄」的固定 block。
+ */
+function buildBulletRequirementsSection(profile: Profile): string {
+  const { bulletRequirements, experienceList } = buildBulletRequirementsAndExperienceList(profile);
+  const lang = getPromptLang();
+  if (profile.autoAllocateBullets) {
+    const instruction =
+      lang === 'en' ? BULLET_ALLOCATION_INSTRUCTION_EN : BULLET_ALLOCATION_INSTRUCTION_ZH;
+    return (
+      'Generate the PER-EXPERIENCE BULLET REQUIREMENTS block yourself according to the following instructions. Do NOT copy a pre-written block; write one line per experience in EXPERIENCE LIST with your chosen bullet count and word count.\n\n' +
+      instruction
+    );
+  }
+  return (
+    'Copy the following block EXACTLY (do not modify):\n\n' +
+    bulletRequirements
+  );
+}
+
+/**
+ * Step 3: 经历映射（唯一使用 profile 的步骤；输出含 CANDIDATE SUMMARY + BULLET REQUIREMENTS + EXPERIENCE LIST 供后续仅用 mapping）
  */
 async function generateMapping(
   openai: OpenAIService,
@@ -224,7 +284,7 @@ async function generateMapping(
   companyProfile: string,
   jdText: string,
   painPoints: string,
-  candidateExperience: string
+  profile: Profile
 ): Promise<void> {
   if (isStepCompleted(jobId, 'mapping')) {
     console.log(`⏭️  Skipping mapping (already completed)`);
@@ -234,13 +294,18 @@ async function generateMapping(
   console.log(`🗺️  Step 3/7: Generating mapping...`);
   updateStepStatus(jobId, 'mapping', 'in_progress');
 
+  const { experienceList } = buildBulletRequirementsAndExperienceList(profile);
+  const bulletRequirementsSection = buildBulletRequirementsSection(profile);
+
   try {
     const template = loadTemplate('mapping', getPromptLang());
     const rendered = renderTemplate(template, {
       companyProfile,
       jd: jdText,
       painPoints,
-      candidateExperience,
+      candidateExperience: JSON.stringify(profile.experiences, null, 2),
+      bulletRequirementsSection,
+      experienceList,
     });
 
     const outputDir = join(process.cwd(), 'out', jobId);
@@ -262,13 +327,12 @@ async function generateMapping(
 }
 
 /**
- * Step 4: 生成经历要点
+ * Step 4: 生成经历要点（仅用 mapping，mapping 中已含 PER-EXPERIENCE BULLET REQUIREMENTS 与证据）
  */
 async function generateExperienceBullets(
   openai: OpenAIService,
   jobId: string,
   jdText: string,
-  profile: Profile,
   painPoints: string,
   companyProfile: string,
   mapping: string
@@ -282,27 +346,12 @@ async function generateExperienceBullets(
   updateStepStatus(jobId, 'experienceBullets', 'in_progress');
 
   try {
-    // 第一段经历多 1～2 条公司特色（可强延伸）
-    const experiencesWithRequirements = profile.experiences.map((exp, index) => {
-      const bulletCount = exp.bulletCount ?? 2;
-      const isFirst = index === 0;
-      const extra = isFirst ? ' + 1–2 bullets that are directly related to the target company (strong extension allowed)' : '';
-      const wordCount = exp.wordCount
-        ? (typeof exp.wordCount === 'string' ? exp.wordCount : `${exp.wordCount}-${exp.wordCount + 5}`)
-        : '20-25';
-      return {
-        ...exp,
-        requirement: `Experience ${index + 1}: Write EXACTLY ${bulletCount} bullet point(s)${extra}, each approximately ${wordCount} words`,
-      };
-    });
-
     const template = loadTemplate('experience-bullets', getPromptLang());
     const rendered = renderTemplate(template, {
       jd: jdText,
       painPoints,
       companyProfile,
       mapping,
-      experiences: JSON.stringify(experiencesWithRequirements, null, 2),
     });
 
     const outputDir = join(process.cwd(), 'out', jobId);
@@ -329,16 +378,16 @@ async function generateExperienceBullets(
 }
 
 /**
- * Step 5: 生成摘要
+ * Step 5: 生成摘要（仅用 mapping，其中 CANDIDATE SUMMARY 含足够候选人信息）
  */
 async function generateSummary(
   openai: OpenAIService,
   jobId: string,
   jdText: string,
-  profile: Profile,
   painPoints: string,
   experienceBullets: string,
-  companyProfile: string
+  companyProfile: string,
+  mapping: string
 ): Promise<void> {
   if (isStepCompleted(jobId, 'summary')) {
     console.log(`⏭️  Skipping summary (already completed)`);
@@ -354,7 +403,7 @@ async function generateSummary(
       jd: jdText,
       painPoints,
       companyProfile,
-      candidateExperience: JSON.stringify(profile.experiences, null, 2),
+      mapping,
     });
 
     const outputDir = join(process.cwd(), 'out', jobId);
@@ -376,13 +425,12 @@ async function generateSummary(
 }
 
 /**
- * Step 6: 生成求职信
+ * Step 6: 生成求职信（仅用 mapping，其中 CANDIDATE SUMMARY 含足够候选人信息）
  */
 async function generateCoverLetter(
   openai: OpenAIService,
   jobId: string,
   jdText: string,
-  profile: Profile,
   painPoints: string,
   summary: string,
   experienceBullets: string,
@@ -404,7 +452,6 @@ async function generateCoverLetter(
       painPoints,
       experienceBullets,
       mapping,
-      candidateExperience: JSON.stringify(profile.experiences, null, 2),
     });
 
     const outputDir = join(process.cwd(), 'out', jobId);
@@ -528,26 +575,25 @@ async function processJob(
     'utf-8'
   );
 
-  // Step 3: 经历映射
+  // Step 3: 经历映射（唯一传入 profile 的步骤）
   await generateMapping(
     openai,
     jobId,
     companyProfileForPrompts,
     jdText,
     painPointsText,
-    JSON.stringify(profile.experiences, null, 2)
+    profile
   );
   const mappingText = readFileSync(
     join(process.cwd(), 'out', jobId, 'mapping.raw.txt'),
     'utf-8'
   );
 
-  // Step 4: 经历要点
+  // Step 4: 经历要点（仅用 mapping）
   await generateExperienceBullets(
     openai,
     jobId,
     jdText,
-    profile,
     painPointsText,
     companyProfileForPrompts,
     mappingText
@@ -557,27 +603,26 @@ async function processJob(
     'utf-8'
   );
 
-  // Step 5: 摘要
+  // Step 5: 摘要（仅用 mapping）
   await generateSummary(
     openai,
     jobId,
     jdText,
-    profile,
     painPointsText,
     experienceBulletsText,
-    companyProfileForPrompts
+    companyProfileForPrompts,
+    mappingText
   );
   const summaryText = readFileSync(
     join(process.cwd(), 'out', jobId, 'summary.raw.txt'),
     'utf-8'
   );
 
-  // Step 6: 求职信
+  // Step 6: 求职信（仅用 mapping）
   await generateCoverLetter(
     openai,
     jobId,
     jdText,
-    profile,
     painPointsText,
     summaryText,
     experienceBulletsText,

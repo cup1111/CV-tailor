@@ -1,10 +1,8 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
-import { load } from 'js-yaml';
 import { z } from 'zod';
 import { OpenAIService } from './openai.js';
 import { loadTemplate, renderTemplate } from './template.js';
-import { ProfileSchema } from '../types/profile.js';
 
 const RegenerateExperienceSchema = z.object({
   company: z.string(),
@@ -75,29 +73,8 @@ function getPromptLang(): string {
   return process.env.LANG || process.env.PROMPT_LANG || 'en';
 }
 
-function getRegenerateFallbacks(lang: string): {
-  noProfile: string;
-  parseError: string;
-  none: string;
-} {
-  if (lang === 'zh') {
-    return { noProfile: '(未找到 profile.yaml)', parseError: '(解析 profile 失败)', none: '(无)' };
-  }
-  return { noProfile: '(profile.yaml not found)', parseError: '(Failed to parse profile)', none: '(none)' };
-}
-
-function loadProfileExperiences(lang?: string): string {
-  const fallbacks = getRegenerateFallbacks(lang || getPromptLang());
-  const profilePath = join(process.cwd(), 'profile.yaml');
-  if (!existsSync(profilePath)) return fallbacks.noProfile;
-  try {
-    const content = readFileSync(profilePath, 'utf-8');
-    const parsed = load(content);
-    const profile = ProfileSchema.parse(parsed);
-    return JSON.stringify(profile.experiences, null, 2);
-  } catch {
-    return fallbacks.parseError;
-  }
+function getRegenerateFallbacks(lang: string): { none: string } {
+  return { none: lang === 'zh' ? '(无)' : '(none)' };
 }
 
 /**
@@ -118,11 +95,13 @@ export async function regenerateResumeContent(
   const currentExperienceBullets = readOutFile(outDir, 'experience-bullets.extracted.txt');
   const currentCoverLetter = readOutFile(outDir, 'cover-letter.raw.txt');
   const promptLang = getPromptLang();
-  const candidateExperience = loadProfileExperiences(promptLang);
   const fallbacks = getRegenerateFallbacks(promptLang);
 
   if (!currentSummary || !currentExperienceBullets || !currentCoverLetter) {
     throw new Error('Missing current summary, experience bullets, or cover letter. Run full generate first.');
+  }
+  if (!mapping) {
+    throw new Error('Missing mapping.raw.txt. Run full generate first.');
   }
 
   const template = loadTemplate('regenerate', promptLang);
@@ -130,11 +109,10 @@ export async function regenerateResumeContent(
     jd,
     companyProfile: companyProfile || fallbacks.none,
     painPoints: painPoints || fallbacks.none,
-    mapping: mapping || fallbacks.none,
+    mapping,
     currentSummary,
     currentExperienceBullets,
     currentCoverLetter,
-    candidateExperience,
     feedback: feedback.trim() || 'Please improve alignment with the JD and company without adding new claims.',
   });
 
