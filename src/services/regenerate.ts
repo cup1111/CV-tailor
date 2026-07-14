@@ -69,13 +69,7 @@ function loadJobContext(jobId: string): { jd: string; companyProfile: string } {
   return { jd, companyProfile };
 }
 
-function getPromptLang(): string {
-  return process.env.LANG || process.env.PROMPT_LANG || 'en';
-}
-
-function getRegenerateFallbacks(lang: string): { none: string } {
-  return { none: lang === 'zh' ? '(无)' : '(none)' };
-}
+const EMPTY_PLACEHOLDER = '(none)';
 
 /**
  * 根据用户反馈重新生成 Summary、经历要点、求职信，并写入 out 目录；返回结构化结果与 feedbackResponse（Markdown）。
@@ -94,8 +88,6 @@ export async function regenerateResumeContent(
   const currentSummary = readOutFile(outDir, 'summary.raw.txt');
   const currentExperienceBullets = readOutFile(outDir, 'experience-bullets.extracted.txt');
   const currentCoverLetter = readOutFile(outDir, 'cover-letter.raw.txt');
-  const promptLang = getPromptLang();
-  const fallbacks = getRegenerateFallbacks(promptLang);
 
   if (!currentSummary || !currentExperienceBullets || !currentCoverLetter) {
     throw new Error('Missing current summary, experience bullets, or cover letter. Run full generate first.');
@@ -104,11 +96,11 @@ export async function regenerateResumeContent(
     throw new Error('Missing mapping.raw.txt. Run full generate first.');
   }
 
-  const template = loadTemplate('regenerate', promptLang);
+  const template = loadTemplate('regenerate');
   const rendered = renderTemplate(template, {
     jd,
-    companyProfile: companyProfile || fallbacks.none,
-    painPoints: painPoints || fallbacks.none,
+    companyProfile: companyProfile || EMPTY_PLACEHOLDER,
+    painPoints: painPoints || EMPTY_PLACEHOLDER,
     mapping,
     currentSummary,
     currentExperienceBullets,

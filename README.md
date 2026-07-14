@@ -37,7 +37,7 @@ A tool that generates job application materials from job descriptions (JDs): pai
 
    - `OPENAI_API_KEY` — your OpenAI API key (required)
 
-   Optional: `OPENAI_MODEL`, `OPENAI_RESPONSES_MODEL`, `LANG` (see below).
+   Optional: `OPENAI_MODEL`, `OPENAI_RESPONSES_MODEL` (see below).
 
 4. Profile (your resume data):
 
@@ -98,7 +98,7 @@ All outputs are under `out/{job_id}/` (e.g. `company-profile.raw.txt`, `pain-poi
 job/
   profile.example.yaml   # Sample profile; copy to profile.yaml (gitignored)
   .env.example           # Sample env; copy to .env (gitignored)
-  templates/             # JSON prompt templates (en/zh by LANG)
+  templates/             # English JSON Prompt Templates (see ADR-0001)
   src/
     cli.ts               # CLI entry
     server.ts            # Express app + web UI
@@ -135,11 +135,10 @@ Create from `profile.example.yaml`. Include:
 | `OPENAI_API_KEY` | Yes | OpenAI API key |
 | `OPENAI_MODEL` | No | Chat model (default from env or gpt-4o) |
 | `OPENAI_RESPONSES_MODEL` | No | Model for web search (default gpt-4o) |
-| `LANG` | No | Prompt language: `en` or `zh` (default `en`) |
 
 ### Templates
 
-Templates live under `templates/` (and optionally `templates/en/`, `templates/zh/` when using `LANG`). Each is a JSON file with `systemPrompt`, `userPrompt`, and optional `temperature`, `maxTokens`. Variables use `{{name}}` and are filled at runtime.
+Prompt Templates live under `templates/` as English-only JSON files (`systemPrompt`, `userPrompt`, optional `temperature`, `maxTokens`). Variables use `{{name}}` and are filled at runtime. UI Locale (`?lang=`) does not select templates — see ADR-0001.
 
 ## Development
 

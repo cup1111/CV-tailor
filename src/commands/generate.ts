@@ -49,10 +49,6 @@ function extractExperienceBullets(response: string): string {
 const COMPANY_MARKER = '---COMPANY---';
 const JD_MARKER = '---JD---';
 
-function getPromptLang(): string {
-  return process.env.LANG || process.env.PROMPT_LANG || 'en';
-}
-
 /**
  * 读取每个 job 的两项独立输入：公司信息 + JD
  * 存储方式兼容：（1）存在 jobs/{jobId}.company.txt 则公司信息从该文件读，JD 从 jobs/{jobId}.md 读；（2）否则从 jobs/{jobId}.md 解析，若含 ---JD--- 则前半为公司信息、后半为 JD，否则整份为 JD、公司信息为空。
@@ -157,7 +153,7 @@ async function generateCompanyResearch(
         'No web search was performed (no company keywords provided). Use only the job description below to infer company context.';
     }
 
-    const template = loadTemplate('company-research', getPromptLang());
+    const template = loadTemplate('company-research');
     const rendered = renderTemplate(template, { webSearchResults, jd });
     const { text, finishReason } = await openai.generateTextWithMeta(rendered, 3, promptPath);
     writeFileSync(rawPath, text, 'utf-8');
@@ -191,7 +187,7 @@ async function generatePainPoints(
   updateStepStatus(jobId, 'painPoints', 'in_progress');
 
   try {
-    const template = loadTemplate('pain-points', getPromptLang());
+    const template = loadTemplate('pain-points');
     const rendered = renderTemplate(template, {
       jd: jdText,
       companyProfile,
@@ -214,10 +210,6 @@ async function generatePainPoints(
     throw error;
   }
 }
-
-/** 按 JD 重要程度分配 bullet 条数的说明（中文） */
-const BULLET_ALLOCATION_INSTRUCTION_ZH =
-  '请根据 JD 与痛点，为下面 EXPERIENCE LIST 中的每条经历分配 bullet 条数与字数要求。原则：与 JD/痛点越相关的经历分配越多条（1–4 条）。约束：每条经历 1–4 条；第一条经历至少 2 条；全部经历总条数建议 10–14（经历少于 4 段时可 8–12）；字数写 "20-25" 或 "25-30"。若提供了公司画像，对第一条经历在要求末尾加：For the first experience add 1–2 bullets tied to the target company if company profile provided. 输出格式：每行一条，形如 Experience N (公司 - 角色): Write EXACTLY X bullet point(s), each approximately Y words. [首条可加上述额外句]';
 
 /** 按 JD 重要程度分配 bullet 条数的说明（英文） */
 const BULLET_ALLOCATION_INSTRUCTION_EN =
@@ -260,10 +252,8 @@ function buildBulletRequirementsAndExperienceList(profile: Profile): {
  */
 function buildBulletRequirementsSection(profile: Profile): string {
   const { bulletRequirements, experienceList } = buildBulletRequirementsAndExperienceList(profile);
-  const lang = getPromptLang();
   if (profile.autoAllocateBullets) {
-    const instruction =
-      lang === 'en' ? BULLET_ALLOCATION_INSTRUCTION_EN : BULLET_ALLOCATION_INSTRUCTION_ZH;
+    const instruction = BULLET_ALLOCATION_INSTRUCTION_EN;
     return (
       'Generate the PER-EXPERIENCE BULLET REQUIREMENTS block yourself according to the following instructions. Do NOT copy a pre-written block; write one line per experience in EXPERIENCE LIST with your chosen bullet count and word count.\n\n' +
       instruction
@@ -298,7 +288,7 @@ async function generateMapping(
   const bulletRequirementsSection = buildBulletRequirementsSection(profile);
 
   try {
-    const template = loadTemplate('mapping', getPromptLang());
+    const template = loadTemplate('mapping');
     const rendered = renderTemplate(template, {
       companyProfile,
       jd: jdText,
@@ -346,7 +336,7 @@ async function generateExperienceBullets(
   updateStepStatus(jobId, 'experienceBullets', 'in_progress');
 
   try {
-    const template = loadTemplate('experience-bullets', getPromptLang());
+    const template = loadTemplate('experience-bullets');
     const rendered = renderTemplate(template, {
       jd: jdText,
       painPoints,
@@ -398,7 +388,7 @@ async function generateSummary(
   updateStepStatus(jobId, 'summary', 'in_progress');
 
   try {
-    const template = loadTemplate('summary', getPromptLang());
+    const template = loadTemplate('summary');
     const rendered = renderTemplate(template, {
       jd: jdText,
       painPoints,
@@ -445,7 +435,7 @@ async function generateCoverLetter(
   updateStepStatus(jobId, 'coverLetter', 'in_progress');
 
   try {
-    const template = loadTemplate('cover-letter', getPromptLang());
+    const template = loadTemplate('cover-letter');
     const rendered = renderTemplate(template, {
       jd: jdText,
       summary,
@@ -496,7 +486,7 @@ export async function generateReview(
   updateStepStatus(jobId, 'review', 'in_progress');
 
   try {
-    const template = loadTemplate('review', getPromptLang());
+    const template = loadTemplate('review');
     const rendered = renderTemplate(template, {
       companyProfile,
       painPoints,

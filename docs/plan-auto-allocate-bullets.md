@@ -73,7 +73,7 @@
 - 模板中：
   - 当 `bulletRequirementsInstruction` 非空：写「Generate the PER-EXPERIENCE BULLET REQUIREMENTS block according to the following instructions: {{bulletRequirementsInstruction}}」且注明「Do not copy; write the block yourself based on EXPERIENCE LIST and JD relevance.」。
   - 当 `bulletRequirementsInstruction` 为空：保留现有「Copy the following block EXACTLY: {{bulletRequirements}}」。
-- 需同时改：`templates/mapping.jsonprompt`、`templates/en/mapping.jsonprompt`，以及 generate 里 `renderTemplate` 传入的变量（增加 `bulletRequirementsInstruction` 或等价物）。
+- 需同时改：`templates/mapping.jsonprompt`，以及 generate 里 `renderTemplate` 传入的变量（增加 `bulletRequirementsInstruction` 或等价物）。
 
 ### 4. Step 4 Experience Bullets
 
@@ -108,7 +108,6 @@
 | `src/types/profile.ts` | `ProfileSchema` 增加 `autoAllocateBullets?: boolean` |
 | `src/commands/generate.ts` | 读取 `autoAllocateBullets`；分支构建 `bulletRequirements` / `bulletRequirementsInstruction`；mapping 渲染时传入新变量 |
 | `templates/mapping.jsonprompt` | 支持「按说明生成」PER-EXPERIENCE BULLET REQUIREMENTS（条件文案） |
-| `templates/en/mapping.jsonprompt` | 同上英文版 |
 | `docs/plan-auto-allocate-bullets.md` | 本计划（可选：README 加一小节说明） |
 
 ---
