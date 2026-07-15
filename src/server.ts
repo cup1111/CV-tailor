@@ -905,7 +905,7 @@ function buildHtml(lang: Locale): string {
                     body: JSON.stringify({ feedback: feedback || UI.regenSubmitDefault })
                 });
                 const data = await res.json();
-                if (!res.ok) throw new Error(data.error || '请求失败');
+                if (!res.ok) throw new Error(data.error || UI.requestFailed);
                 closeRegenerateModal();
                 showMessage(UI.regenStarted, 'info');
                 if (window.regeneratePollingTimer) clearInterval(window.regeneratePollingTimer);
@@ -942,7 +942,7 @@ function buildHtml(lang: Locale): string {
             
             const originalText = btn.textContent;
             btn.disabled = true;
-            btn.innerHTML = '生成中... <span class="loading"></span>';
+            btn.innerHTML = UI.statusGenerating + '... <span class="loading"></span>';
 
             try {
                 const response = await fetch(\`/api/generate/\${jobId}\`, {
@@ -1063,7 +1063,7 @@ function buildHtml(lang: Locale): string {
                 const url = \`/api/archive?page=\${page}&limit=100\${keyword ? '&keyword=' + encodeURIComponent(keyword) : ''}\`;
                 const res = await fetch(url);
                 const data = await res.json();
-                if (!res.ok) throw new Error(data.error || '请求失败');
+                if (!res.ok) throw new Error(data.error || UI.requestFailed);
                 if (page === 1) {
                     archivePage = 1;
                     renderArchiveGroups(data.groups, true);

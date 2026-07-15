@@ -98,6 +98,7 @@ export const UI_STRINGS: Record<Locale, Record<string, string>> = {
     loadFailed: 'Load failed: ',
     regenLoadFeedbackFailed: 'Could not load feedback; you can type your instructions here.',
     truncationSep: ', ',
+    requestFailed: 'Request failed',
   },
   zh: {
     navWorkspace: '工作区',
@@ -193,9 +194,7 @@ export const UI_STRINGS: Record<Locale, Record<string, string>> = {
     loadFailed: '加载失败: ',
     regenLoadFeedbackFailed: '加载反馈失败，可直接输入修改意见…',
     truncationSep: '、',
+    requestFailed: '请求失败',
   },
 };
 
-export function t(lang: Locale, key: keyof (typeof UI_STRINGS.en)): string {
-  return UI_STRINGS[lang]?.[key] ?? UI_STRINGS.en[key] ?? key;
-}
