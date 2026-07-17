@@ -50,7 +50,7 @@ export async function generateCommand(options: {
       console.log('No job descriptions found. Run "pnpm ingest" first.');
       return;
     }
-    jobIds = allIds.filter((id) => !pack.isStepCompleted(id, 'review'));
+    jobIds = pack.listIncompleteJobIds();
     if (jobIds.length === 0) {
       console.log('All jobs already completed. Nothing to generate.');
       return;

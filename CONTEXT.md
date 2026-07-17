@@ -27,3 +27,7 @@ _Avoid_: company profile (that is the generated artifact), company.txt contents 
 **Company Profile**:
 The generated company research artifact for one Application Pack (from Web Search + Prompt Template). Empty when Company Info was not provided.
 _Avoid_: company info, user search keywords
+
+**Job View**:
+The read-only workspace snapshot for one job (title, Company Info flag, generation status, in-flight progress, whether the Application Pack is complete). Adapters list jobs through this view instead of reading status or progress files directly.
+_Avoid_: status.json, .progress, hasCompanyProfile (use hasCompanyInfo)

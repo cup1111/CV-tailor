@@ -1132,9 +1132,9 @@ function buildHtml(lang: Locale): string {
                             <div class="regenerate-bar"><div class="regenerate-bar-fill" style="width:\${progressPct}%"></div></div>
                         </div>
                     \` : '';
-                    const modeClass = job.hasCompanyProfile ? 'has-company-profile' : 'jd-only';
-                    const modeBadgeClass = job.hasCompanyProfile ? 'has-company' : 'jd-only';
-                    const modeText = job.hasCompanyProfile ? UI.modeHasCompany : UI.modeJdOnly;
+                    const modeClass = job.hasCompanyInfo ? 'has-company-profile' : 'jd-only';
+                    const modeBadgeClass = job.hasCompanyInfo ? 'has-company' : 'jd-only';
+                    const modeText = job.hasCompanyInfo ? UI.modeHasCompany : UI.modeJdOnly;
                     return \`
                         <div class="jd-item \${modeClass}" data-job-id="\${job.id}">
                             <div class="jd-item-header">
@@ -1248,7 +1248,7 @@ function buildHtml(lang: Locale): string {
                 }
 
                 let html = '';
-                if (results.hasCompanyProfile) {
+                if (results.hasCompanyInfo) {
                     html += '<div class="results-mode-banner has-company">' + UI.resultsBannerCompany + '</div>';
                 } else {
                     html += '<div class="results-mode-banner jd-only">' + UI.resultsBannerJdOnly + '</div>';
@@ -1727,33 +1727,7 @@ function buildHtml(lang: Locale): string {
 // API: 获取所有 JD 列表
 app.get('/api/jobs', (req, res) => {
   try {
-    const jobIds = pack.listJobIds();
-    const jobs = jobIds.map((jobId) => {
-      const inputs = pack.loadJobInputs(jobId);
-      let jdContent = inputs.jd;
-      const lines = jdContent.split('\n');
-      if (lines[0]?.startsWith('#')) {
-        jdContent = lines.slice(1).join('\n');
-      }
-      if (jdContent.includes('URL:')) {
-        jdContent = jdContent.replace(/URL:.*\n/, '');
-      }
-      jdContent = jdContent.replace(/##\s*Job\s*Description\s*\n?/i, '');
-      const title = jdContent.trim().substring(0, 50).replace(/\n/g, ' ').trim();
-      const finalTitle =
-        title.length < jdContent.trim().length ? title + '...' : title;
-
-      return {
-        id: jobId,
-        title: finalTitle,
-        content: jdContent.trim(),
-        status: pack.readStatus(jobId),
-        hasCompanyProfile: pack.readPack(jobId).hasCompanyInfo,
-        progress: pack.getProgress(jobId),
-      };
-    });
-
-    res.json(jobs);
+    res.json(pack.listJobs());
   } catch (error) {
     res.status(500).json({ error: error instanceof Error ? error.message : 'Unknown error' });
   }
@@ -1811,7 +1785,7 @@ app.get('/api/results/:jobId', (req, res) => {
     const results = pack.readPack(jobId);
     res.json({
       exists: results.exists,
-      hasCompanyProfile: results.hasCompanyInfo,
+      hasCompanyInfo: results.hasCompanyInfo,
       companyProfile: results.companyProfile,
       painPoints: results.painPoints,
       mapping: results.mapping,
@@ -1852,7 +1826,6 @@ app.post('/api/regenerate/:jobId', async (req, res) => {
         await pack.regeneratePack(jobId, feedback, { model: openai });
         console.log(`[Regenerate] Job ${jobId}: 完成`);
       } catch (err) {
-        pack.setProgress(jobId, null);
         console.error('Regenerate/review error:', err);
       }
     });

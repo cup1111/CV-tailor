@@ -1,5 +1,6 @@
 import type { z } from 'zod';
 import type { ChatCompletionOptions } from '../services/openai.js';
+import type { Status } from '../types/outputs.js';
 
 /** User-provided company keywords for Web Search — not the generated company profile. */
 export type JobInputs = {
@@ -58,4 +59,22 @@ export type ApplicationPackModuleOptions = {
   workspaceRoot?: string;
   /** Directory of English Prompt Templates. Defaults to workspaceRoot/templates. */
   templatesRoot?: string;
+};
+
+/**
+ * Read-only list/workspace view for one job.
+ * Adapters use this instead of reading status.json / .progress themselves.
+ */
+export type JobView = {
+  id: string;
+  title: string;
+  /** Cleaned JD text for display in the workspace list. */
+  content: string;
+  hasCompanyInfo: boolean;
+  /** Generation step status, or null if never started. */
+  status: Status | null;
+  /** In-flight regenerate phase, when any. */
+  progress?: string;
+  /** True when the review step is completed. */
+  packComplete: boolean;
 };

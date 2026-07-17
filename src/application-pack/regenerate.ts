@@ -1,10 +1,9 @@
 import { join } from 'path';
 import { z } from 'zod';
-import { loadTemplate, renderTemplate } from '../services/template.js';
 import type { PackStore } from './store.js';
 import type { ModelPort } from './types.js';
 import { runReview } from './lifecycle.js';
-import { extractExperienceBullets } from './extract.js';
+import { parseStepOutput, preparePrompt } from './prompt-contracts.js';
 
 const RegenerateExperienceSchema = z.object({
   company: z.string(),
@@ -67,28 +66,32 @@ export async function regeneratePackForJob(args: {
   store.setProgress(jobId, 'regenerate');
 
   try {
-    const template = loadTemplate('regenerate', templatesRoot);
-    const rendered = renderTemplate(template, {
-      jd: inputs.jd,
-      companyProfile: companyProfile || EMPTY_PLACEHOLDER,
-      painPoints: painPoints || EMPTY_PLACEHOLDER,
-      mapping,
-      currentSummary,
-      currentExperienceBullets,
-      currentCoverLetter,
-      feedback:
-        feedback.trim() ||
-        'Please improve alignment with the JD and company without adding new claims.',
-    });
+    const rendered = preparePrompt(
+      'regenerate',
+      {
+        jd: inputs.jd,
+        companyProfile: companyProfile || EMPTY_PLACEHOLDER,
+        painPoints: painPoints || EMPTY_PLACEHOLDER,
+        mapping,
+        currentSummary,
+        currentExperienceBullets,
+        currentCoverLetter,
+        feedback:
+          feedback.trim() ||
+          'Please improve alignment with the JD and company without adding new claims.',
+      },
+      templatesRoot
+    );
 
     const rawPath = join(store.outDir(jobId), 'regenerate.raw.json');
     const result = await model.generateJson(rendered, RegenerateOutputSchema, 3, rawPath);
 
     const experienceRaw = experiencesToRaw(result.experiences);
+    const parsed = parseStepOutput('experience-bullets', experienceRaw);
     store.writeArtifacts(jobId, {
       summary: result.summary,
       experienceBulletsRaw: experienceRaw,
-      experienceBullets: extractExperienceBullets(experienceRaw),
+      experienceBullets: parsed.extracted ?? '',
       coverLetter: result.coverLetter,
       regenerateFeedback: result.feedbackResponse,
     });

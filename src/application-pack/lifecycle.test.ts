@@ -308,7 +308,7 @@ describe('Application Pack lifecycle', () => {
     expect(read.review).toContain('PASS');
     expect(read.companyProfile).toBe('Generated Acme profile');
     expect(pack.loadJobInputs('j4').companyInfo).toBe('Acme');
-    expect(pack.getProgress('j4')).toBeUndefined();
+    expect(pack.listJobs().find((j) => j.id === 'j4')?.progress).toBeUndefined();
     expect(textPhase).toBe(1);
   });
 });
