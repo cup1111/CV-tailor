@@ -1,18 +1,16 @@
 import express from 'express';
-import { writeFileSync, mkdirSync, existsSync, readdirSync, readFileSync, unlinkSync, rmSync } from 'fs';
-import { join } from 'path';
 import { generateCommand } from './commands/generate.js';
-import { readStatus, updateStepStatus } from './services/status.js';
 import {
   listArchive,
   archiveAllJobs,
   restoreJob,
   getArchiveJobDetail,
 } from './services/archive.js';
-import { regenerateResumeContent } from './services/regenerate.js';
 import { OpenAIService } from './services/openai.js';
-import { generateReview } from './commands/generate.js';
+import { createApplicationPackModule } from './application-pack/index.js';
 import { UI_STRINGS, type Locale } from './i18n.js';
+
+const pack = createApplicationPackModule();
 
 const app = express();
 app.use(express.json());
@@ -30,7 +28,7 @@ function buildHtml(lang: Locale): string {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Resume Pack Generator</title>
+    <title>{{pageTitle}}</title>
     <style>
         * {
             margin: 0;
@@ -69,8 +67,212 @@ function buildHtml(lang: Locale): string {
             margin-bottom: 20px;
             font-size: 20px;
         }
+        .quick-start {
+            margin-bottom: 20px;
+            padding: 14px 16px;
+            border: 1px solid #dbeafe;
+            border-radius: 8px;
+            background: #f8fbff;
+        }
+        .quick-start h3 {
+            color: #1f4b99;
+            font-size: 15px;
+            margin-bottom: 8px;
+        }
+        .quick-start ol {
+            margin-left: 20px;
+            color: #334155;
+            line-height: 1.6;
+            font-size: 14px;
+        }
+        .sequence {
+            margin: 0 0 20px;
+            padding: 16px;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            background: #ffffff;
+        }
+        .sequence h3 {
+            margin-bottom: 14px;
+            color: #1e293b;
+            font-size: 16px;
+        }
+        .sequence-grid {
+            display: grid;
+            gap: 12px;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        }
+        .sequence-item {
+            display: flex;
+            gap: 10px;
+            align-items: flex-start;
+            padding: 12px;
+            border-radius: 8px;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+        }
+        .sequence-index {
+            width: 26px;
+            height: 26px;
+            border-radius: 50%;
+            background: #2563eb;
+            color: #fff;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: 700;
+            flex-shrink: 0;
+        }
+        .sequence-item h4 {
+            font-size: 14px;
+            margin-bottom: 4px;
+            color: #1e293b;
+        }
+        .sequence-item p {
+            font-size: 13px;
+            color: #475569;
+            line-height: 1.5;
+        }
+        .motivation-card {
+            margin-bottom: 20px;
+            padding: 16px;
+            border-radius: 10px;
+            border: 1px solid #fde68a;
+            background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
+        }
+        .apply-counter {
+            margin-bottom: 20px;
+            padding: 14px 16px;
+            border-radius: 10px;
+            border: 1px solid #bae6fd;
+            background: linear-gradient(135deg, #f0f9ff 0%, #ecfeff 100%);
+        }
+        .apply-counter-title {
+            font-size: 15px;
+            font-weight: 700;
+            color: #0c4a6e;
+            margin-bottom: 4px;
+        }
+        .apply-counter-desc {
+            font-size: 13px;
+            color: #0369a1;
+            margin-bottom: 8px;
+        }
+        .apply-counter-value {
+            font-size: 30px;
+            font-weight: 800;
+            color: #075985;
+            line-height: 1.1;
+        }
+        .apply-counter-value span {
+            font-size: 14px;
+            font-weight: 600;
+            margin-left: 6px;
+            color: #0284c7;
+        }
+        .apply-streak {
+            margin-top: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            color: #0369a1;
+        }
+        .star-buddy {
+            margin-bottom: 20px;
+            padding: 16px;
+            border-radius: 12px;
+            border: 1px solid #fbcfe8;
+            background: linear-gradient(145deg, #fff7ed 0%, #fdf2f8 45%, #eef2ff 100%);
+            position: relative;
+            overflow: hidden;
+        }
+        .star-buddy:before,
+        .star-buddy:after {
+            content: '✦';
+            position: absolute;
+            color: rgba(255, 255, 255, 0.88);
+            animation: twinkleFloat 2.8s ease-in-out infinite;
+            pointer-events: none;
+        }
+        .star-buddy:before {
+            top: 10px;
+            right: 18px;
+            font-size: 16px;
+        }
+        .star-buddy:after {
+            bottom: 12px;
+            left: 16px;
+            font-size: 12px;
+            animation-delay: 0.9s;
+        }
+        .star-buddy-title {
+            font-size: 16px;
+            font-weight: 700;
+            color: #7c2d12;
+            margin-bottom: 4px;
+        }
+        .star-buddy-subtitle {
+            font-size: 13px;
+            color: #9a3412;
+            margin-bottom: 10px;
+        }
+        .star-buddy-main {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .star-avatar {
+            width: 62px;
+            height: 62px;
+            border-radius: 50%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 34px;
+            background: rgba(255,255,255,0.65);
+            box-shadow: 0 6px 14px rgba(236, 72, 153, 0.18);
+            animation: starPulse 2.2s ease-in-out infinite;
+            flex-shrink: 0;
+        }
+        .star-detail {
+            color: #6b21a8;
+            font-size: 14px;
+            line-height: 1.55;
+            font-weight: 600;
+        }
+        .motivation-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #92400e;
+            margin-bottom: 6px;
+        }
+        .motivation-subtitle {
+            font-size: 13px;
+            color: #a16207;
+            margin-bottom: 10px;
+        }
+        .motivation-quote {
+            font-size: 14px;
+            color: #78350f;
+            margin-bottom: 12px;
+            line-height: 1.6;
+            font-weight: 500;
+        }
         .form-group {
             margin-bottom: 20px;
+        }
+        .field-help-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 6px;
+            gap: 8px;
+            font-size: 12px;
+            color: #64748b;
+        }
+        .char-counter {
+            color: #475569;
+            white-space: nowrap;
         }
         label {
             display: block;
@@ -123,6 +325,13 @@ function buildHtml(lang: Locale): string {
             background-color: #6c757d;
             cursor: not-allowed;
         }
+        button.secondary {
+            background: #eef2f7;
+            color: #334155;
+        }
+        button.secondary:hover {
+            background: #dde5ef;
+        }
         .message {
             padding: 15px;
             border-radius: 4px;
@@ -143,6 +352,19 @@ function buildHtml(lang: Locale): string {
         .jd-list {
             display: grid;
             gap: 15px;
+        }
+        .empty-state {
+            border: 1px dashed #cbd5e1;
+            border-radius: 8px;
+            background: #f8fafc;
+            padding: 24px;
+            text-align: center;
+            color: #475569;
+        }
+        .empty-state h3 {
+            color: #1e293b;
+            margin-bottom: 8px;
+            font-size: 18px;
         }
         .jd-item {
             border: 1px solid #ddd;
@@ -398,6 +620,36 @@ function buildHtml(lang: Locale): string {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
+        @keyframes twinkleFloat {
+            0%, 100% { opacity: 0.3; transform: translateY(0) scale(0.9); }
+            50% { opacity: 1; transform: translateY(-4px) scale(1.1); }
+        }
+        @keyframes starPulse {
+            0%, 100% { transform: scale(1); filter: drop-shadow(0 0 0 rgba(250, 204, 21, 0)); }
+            50% { transform: scale(1.08); filter: drop-shadow(0 0 10px rgba(250, 204, 21, 0.35)); }
+        }
+        @keyframes starBounce {
+            0%, 100% { transform: translateY(0) scale(1); }
+            50% { transform: translateY(-5px) scale(1.08); }
+        }
+        @keyframes starSpin {
+            0% { transform: rotate(0deg) scale(1); }
+            50% { transform: rotate(180deg) scale(1.08); }
+            100% { transform: rotate(360deg) scale(1); }
+        }
+        @keyframes starShoot {
+            0%, 100% { transform: translateX(0) translateY(0) scale(1); opacity: 0.9; }
+            50% { transform: translateX(4px) translateY(-4px) scale(1.1); opacity: 1; }
+        }
+        @keyframes starWink {
+            0%, 100% { transform: scale(1); filter: brightness(1); }
+            45% { transform: scaleY(0.7) scaleX(1.04); filter: brightness(1.15); }
+            55% { transform: scale(1); filter: brightness(1); }
+        }
+        @keyframes confettiFall {
+            0% { transform: translateY(-20px) rotate(0deg); opacity: 1; }
+            100% { transform: translateY(100vh) rotate(520deg); opacity: 0; }
+        }
         .batch-actions {
             display: flex;
             gap: 10px;
@@ -423,6 +675,21 @@ function buildHtml(lang: Locale): string {
         }
         .view-panel { display: none; }
         .view-panel.active { display: block; }
+        .confetti-layer {
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            overflow: hidden;
+            z-index: 3000;
+        }
+        .confetti {
+            position: absolute;
+            width: 8px;
+            height: 14px;
+            border-radius: 2px;
+            opacity: 0.95;
+            animation: confettiFall 1100ms ease-out forwards;
+        }
         .archive-toolbar {
             display: flex;
             gap: 12px;
@@ -485,31 +752,93 @@ function buildHtml(lang: Locale): string {
 
         <div class="section">
             <h2>{{addJobTitle}}</h2>
+            <div class="quick-start">
+                <h3>💡 {{quickStartTitle}}</h3>
+                <ol>
+                    <li>{{quickStartStep1}}</li>
+                    <li>{{quickStartStep2}}</li>
+                    <li>{{quickStartStep3}}</li>
+                </ol>
+            </div>
+            <div class="sequence">
+                <h3>🧭 {{sequenceTitle}}</h3>
+                <div class="sequence-grid">
+                    <div class="sequence-item">
+                        <span class="sequence-index">1</span>
+                        <div>
+                            <h4>📥 {{sequenceStep1Title}}</h4>
+                            <p>{{sequenceStep1Desc}}</p>
+                        </div>
+                    </div>
+                    <div class="sequence-item">
+                        <span class="sequence-index">2</span>
+                        <div>
+                            <h4>⚙️ {{sequenceStep2Title}}</h4>
+                            <p>{{sequenceStep2Desc}}</p>
+                        </div>
+                    </div>
+                    <div class="sequence-item">
+                        <span class="sequence-index">3</span>
+                        <div>
+                            <h4>🚀 {{sequenceStep3Title}}</h4>
+                            <p>{{sequenceStep3Desc}}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
             <form id="jdForm">
                 <div class="form-group">
                     <label for="companyInfo">{{companyInfoLabel}}</label>
                     <textarea id="companyInfo" name="companyInfo" placeholder="{{companyInfoPlaceholder}}"></textarea>
+                    <div class="field-help-row">
+                        <span>{{companyHelper}}</span>
+                        <span class="char-counter" id="companyCount">{{charCount}}: 0</span>
+                    </div>
                 </div>
                 <div class="form-group">
                     <label for="jd">{{jdLabel}}</label>
                     <textarea id="jd" name="jd" required placeholder="{{jdPlaceholder}}"></textarea>
+                    <div class="field-help-row">
+                        <span id="jdHint">{{jdHelper}}</span>
+                        <span class="char-counter" id="jdCount">{{charCount}}: 0</span>
+                    </div>
                 </div>
                 <div class="form-group">
                     <label for="fileUpload">{{fileUploadLabel}}</label>
                     <input type="file" id="fileUpload" accept=".txt,.md">
                 </div>
-                <button type="submit">{{saveJdButton}}</button>
+                <button type="submit" id="saveJdBtn" disabled>{{saveJdButton}}</button>
             </form>
             <div id="message"></div>
         </div>
 
         <div class="section">
             <h2>{{jdListTitle}}</h2>
+            <div class="apply-counter">
+                <div class="apply-counter-title">🎯 {{applyCounterTitle}}</div>
+                <div class="apply-counter-desc">{{applyCounterDesc}}</div>
+                <div id="applyCounterValue" class="apply-counter-value">0 <span>{{applyCounterUnit}}</span></div>
+                <div id="applyStreakValue" class="apply-streak">🔥 {{streakLabel}}: 0 {{streakUnit}}</div>
+            </div>
+            <div class="star-buddy">
+                <div class="star-buddy-title">🌟 {{starBuddyTitle}}</div>
+                <div class="star-buddy-subtitle">{{starBuddySubtitle}}</div>
+                <div class="star-buddy-main">
+                    <div id="starBuddyAvatar" class="star-avatar">⭐</div>
+                    <div id="starBuddyDetail" class="star-detail"></div>
+                </div>
+            </div>
+            <div class="motivation-card">
+                <div class="motivation-title">✨ {{motivationTitle}}</div>
+                <div class="motivation-subtitle">{{motivationSubtitle}}</div>
+                <div id="motivationQuote" class="motivation-quote"></div>
+                <button type="button" class="secondary" onclick="refreshMotivation()">💬 {{motivationBtn}}</button>
+            </div>
             <div class="batch-actions">
-                <button class="success" id="generateAllBtn" onclick="generateAll()">{{generateAllBtn}}</button>
-                <button onclick="refreshList()">{{refreshList}}</button>
-                <button type="button" class="success" onclick="archiveAll()">{{archiveAll}}</button>
-                <button class="danger" onclick="clearAll()">{{clearAll}}</button>
+                <button class="success" id="generateAllBtn" onclick="generateAll()">⚡ {{generateAllBtn}}</button>
+                <button class="secondary" onclick="refreshList()">🔄 {{refreshList}}</button>
+                <button type="button" class="success" onclick="archiveAll()">🗂️ {{archiveAll}}</button>
+                <button class="danger" onclick="clearAll()">🧹 {{clearAll}}</button>
             </div>
             <div id="jdList" class="jd-list">
                 <p>{{loading}}</p>
@@ -534,6 +863,7 @@ function buildHtml(lang: Locale): string {
         </div>
     </div>
 
+    <div id="confettiLayer" class="confetti-layer"></div>
     <div id="regenerateModal" class="modal-overlay" style="display:none;">
         <div class="modal">
             <h3>{{regenerateModalTitle}}</h3>
@@ -554,8 +884,180 @@ function buildHtml(lang: Locale): string {
 
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script>
-        // 页面加载时获取 JD 列表
+        const motivationLines = [
+            UI.motivation1,
+            UI.motivation2,
+            UI.motivation3,
+            UI.motivation4,
+            UI.motivation5
+        ].filter(Boolean);
+        const APPLY_STATE_KEY = 'daily_apply_counter_v1';
+
+        const starBuddies = [
+            { avatar: '⭐', name: 'Sparkle', mood: 'wink' },
+            { avatar: '🌟', name: 'Twinkly', mood: 'float' },
+            { avatar: '✨', name: 'Glimmer', mood: 'bounce' },
+            { avatar: '💫', name: 'Comety', mood: 'spin' },
+            { avatar: '🌠', name: 'Wishy', mood: 'shoot' },
+            { avatar: '☄️', name: 'Nova', mood: 'pulse' }
+        ];
+
+        function dailySeed() {
+            const now = new Date();
+            return Number(String(now.getFullYear()) + String(now.getMonth() + 1).padStart(2, '0') + String(now.getDate()).padStart(2, '0'));
+        }
+
+        function applyStarBuddyMood(mood) {
+            const avatar = document.getElementById('starBuddyAvatar');
+            if (!avatar) return;
+            avatar.style.animation = 'starPulse 2.2s ease-in-out infinite';
+            if (mood === 'float') avatar.style.animation = 'twinkleFloat 2.6s ease-in-out infinite';
+            if (mood === 'bounce') avatar.style.animation = 'starBounce 1.5s ease-in-out infinite';
+            if (mood === 'spin') avatar.style.animation = 'starSpin 3.2s linear infinite';
+            if (mood === 'shoot') avatar.style.animation = 'starShoot 2.4s ease-in-out infinite';
+            if (mood === 'wink') avatar.style.animation = 'starWink 2s ease-in-out infinite';
+        }
+
+        function renderDailyStarBuddy() {
+            const avatarEl = document.getElementById('starBuddyAvatar');
+            const detailEl = document.getElementById('starBuddyDetail');
+            if (!avatarEl || !detailEl || starBuddies.length === 0) return;
+            const seed = dailySeed();
+            const buddy = starBuddies[seed % starBuddies.length];
+            avatarEl.textContent = buddy.avatar;
+            applyStarBuddyMood(buddy.mood);
+            const isZh = window.LANG === 'zh';
+            if (isZh) {
+                detailEl.textContent = UI.starBuddyDetailZh;
+            } else {
+                detailEl.textContent = UI.starBuddyDetailEn
+                    .replace('{name}', buddy.name)
+                    .replace('{mood}', buddy.mood);
+            }
+        }
+
+        function todayKey() {
+            const now = new Date();
+            return [now.getFullYear(), String(now.getMonth() + 1).padStart(2, '0'), String(now.getDate()).padStart(2, '0')].join('-');
+        }
+
+        function readApplyState() {
+            try {
+                const raw = localStorage.getItem(APPLY_STATE_KEY);
+                if (!raw) return { date: todayKey(), count: 0, jobs: [], activeDates: [] };
+                const parsed = JSON.parse(raw);
+                const date = parsed && parsed.date ? parsed.date : todayKey();
+                const activeDates = Array.isArray(parsed.activeDates) ? parsed.activeDates : [];
+                if (date !== todayKey()) return { date: todayKey(), count: 0, jobs: [], activeDates };
+                return {
+                    date,
+                    count: Number(parsed.count || 0),
+                    jobs: Array.isArray(parsed.jobs) ? parsed.jobs : [],
+                    activeDates,
+                };
+            } catch (_) {
+                return { date: todayKey(), count: 0, jobs: [], activeDates: [] };
+            }
+        }
+
+        function writeApplyState(state) {
+            try { localStorage.setItem(APPLY_STATE_KEY, JSON.stringify(state)); } catch (_) {}
+        }
+
+        function dateOffsetStr(baseDateStr, offsetDays) {
+            const d = new Date(baseDateStr + 'T00:00:00');
+            d.setDate(d.getDate() + offsetDays);
+            return [d.getFullYear(), String(d.getMonth() + 1).padStart(2, '0'), String(d.getDate()).padStart(2, '0')].join('-');
+        }
+
+        function calcStreak(activeDates) {
+            const active = new Set(activeDates);
+            let streak = 0;
+            const today = todayKey();
+            while (active.has(dateOffsetStr(today, -streak))) {
+                streak += 1;
+            }
+            return streak;
+        }
+
+        function renderApplyCounter() {
+            const el = document.getElementById('applyCounterValue');
+            const streakEl = document.getElementById('applyStreakValue');
+            if (!el) return;
+            const state = readApplyState();
+            el.innerHTML = String(state.count) + ' <span>' + UI.applyCounterUnit + '</span>';
+            if (streakEl) streakEl.textContent = '🔥 ' + UI.streakLabel + ': ' + calcStreak(state.activeDates) + ' ' + UI.streakUnit;
+        }
+
+        function celebrateConfetti() {
+            const layer = document.getElementById('confettiLayer');
+            if (!layer) return;
+            const colors = ['#60a5fa', '#f472b6', '#34d399', '#fbbf24', '#a78bfa'];
+            for (let i = 0; i < 42; i++) {
+                const piece = document.createElement('span');
+                piece.className = 'confetti';
+                piece.style.left = Math.round(Math.random() * 100) + 'vw';
+                piece.style.backgroundColor = colors[i % colors.length];
+                piece.style.animationDelay = Math.round(Math.random() * 260) + 'ms';
+                piece.style.animationDuration = (900 + Math.round(Math.random() * 600)) + 'ms';
+                layer.appendChild(piece);
+                setTimeout(() => piece.remove(), 1800);
+            }
+        }
+
+        function markApplied(jobId) {
+            const state = readApplyState();
+            const today = todayKey();
+            if (!state.jobs.includes(jobId)) {
+                state.jobs.push(jobId);
+                state.count += 1;
+                if (!state.activeDates.includes(today)) state.activeDates.push(today);
+            }
+            writeApplyState(state);
+            renderApplyCounter();
+            celebrateConfetti();
+            showMessage('🎉 ' + UI.applySuccess, 'success');
+        }
+
+        function refreshMotivation() {
+            const el = document.getElementById('motivationQuote');
+            if (!el || motivationLines.length === 0) return;
+            const idx = Math.floor(Math.random() * motivationLines.length);
+            el.textContent = '“' + motivationLines[idx] + '”';
+        }
+
+        function updateInputUxState() {
+            const jdEl = document.getElementById('jd');
+            const companyEl = document.getElementById('companyInfo');
+            const saveBtn = document.getElementById('saveJdBtn');
+            const jdCount = document.getElementById('jdCount');
+            const companyCount = document.getElementById('companyCount');
+            const jdHint = document.getElementById('jdHint');
+            const jdLen = jdEl ? jdEl.value.trim().length : 0;
+            const companyLen = companyEl ? companyEl.value.trim().length : 0;
+            if (jdCount) jdCount.textContent = UI.charCount + ': ' + jdLen;
+            if (companyCount) companyCount.textContent = UI.charCount + ': ' + companyLen;
+            if (saveBtn) saveBtn.disabled = jdLen === 0;
+            if (jdHint) jdHint.textContent = jdLen === 0 ? UI.saveDisabledHint : UI.jdHelper;
+        }
+
         window.addEventListener('DOMContentLoaded', () => {
+            const jdEl = document.getElementById('jd');
+            const companyEl = document.getElementById('companyInfo');
+            if (jdEl) {
+                jdEl.addEventListener('input', updateInputUxState);
+                jdEl.addEventListener('keydown', function(e) {
+                    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                        e.preventDefault();
+                        document.getElementById('jdForm').requestSubmit();
+                    }
+                });
+            }
+            if (companyEl) companyEl.addEventListener('input', updateInputUxState);
+            updateInputUxState();
+            renderApplyCounter();
+            renderDailyStarBuddy();
+            refreshMotivation();
             refreshList();
         });
 
@@ -611,7 +1113,7 @@ function buildHtml(lang: Locale): string {
                 
                 const listDiv = document.getElementById('jdList');
                 if (jobs.length === 0) {
-                    listDiv.innerHTML = '<p>' + UI.noJobs + '</p>';
+                    listDiv.innerHTML = '<div class="empty-state"><h3>' + UI.noJobsTitle + '</h3><p>' + UI.noJobsHint + '</p></div>';
                     return;
                 }
 
@@ -642,11 +1144,12 @@ function buildHtml(lang: Locale): string {
                                 </div>
                                 <div class="jd-item-actions">
                                     <span class="status-badge \${statusClass}" id="status-badge-\${job.id}">\${statusText}</span>
-                                    <button onclick="generateJob('\${job.id}')" class="success" id="generate-btn-\${job.id}">\${UI.btnGenerate}</button>
-                                    <button onclick="toggleJdContent('\${job.id}')">\${UI.btnViewJd}</button>
-                                    <button onclick="viewResults('\${job.id}')">\${UI.btnViewResults}</button>
-                                    <button type="button" onclick="openRegenerateModal('\${job.id}')" class="success" id="regen-btn-\${job.id}" style="display:\${status?.steps?.review === 'completed' && !progress ? 'inline-block' : 'none'}">\${UI.btnRegenerate}</button>
-                                    <button onclick="deleteJob('\${job.id}')" class="danger">\${UI.btnDelete}</button>
+                                    <button onclick="generateJob('\${job.id}')" class="success" id="generate-btn-\${job.id}">⚡ \${UI.btnGenerate}</button>
+                                    <button onclick="toggleJdContent('\${job.id}')">📄 \${UI.btnViewJd}</button>
+                                    <button onclick="viewResults('\${job.id}')">📊 \${UI.btnViewResults}</button>
+                                    <button type="button" onclick="openRegenerateModal('\${job.id}')" class="success" id="regen-btn-\${job.id}" style="display:\${status?.steps?.review === 'completed' && !progress ? 'inline-block' : 'none'}">♻️ \${UI.btnRegenerate}</button>
+                                    <button type="button" onclick="markApplied('\${job.id}')">🎯 \${UI.btnMarkApplied}</button>
+                                    <button onclick="deleteJob('\${job.id}')" class="danger">🗑️ \${UI.btnDelete}</button>
                                 </div>
                             </div>
                             <div id="regenerate-progress-wrap-\${job.id}" class="regenerate-progress-wrap">\${progressBar}</div>
@@ -1224,57 +1727,29 @@ function buildHtml(lang: Locale): string {
 // API: 获取所有 JD 列表
 app.get('/api/jobs', (req, res) => {
   try {
-    const jobsDir = join(process.cwd(), 'jobs');
-    if (!existsSync(jobsDir)) {
-      return res.json([]);
-    }
-
-    const files = readdirSync(jobsDir).filter(f => f.endsWith('.md'));
-    const jobs = files.map(file => {
-      const jobId = file.replace('.md', '');
-      const companyPath = join(jobsDir, `${jobId}.company.txt`);
-      const hasCompanyProfile = existsSync(companyPath) && readFileSync(companyPath, 'utf-8').trim().length > 0;
-      const content = readFileSync(join(jobsDir, file), 'utf-8');
-      
-      // 提取JD文本内容（跳过标题行和URL行）
-      const lines = content.split('\n');
-      let jdContent = content;
-      
-      // 如果第一行是标题，跳过它
-      if (lines[0].startsWith('#')) {
+    const jobIds = pack.listJobIds();
+    const jobs = jobIds.map((jobId) => {
+      const inputs = pack.loadJobInputs(jobId);
+      let jdContent = inputs.jd;
+      const lines = jdContent.split('\n');
+      if (lines[0]?.startsWith('#')) {
         jdContent = lines.slice(1).join('\n');
       }
-      
-      // 跳过URL行
       if (jdContent.includes('URL:')) {
         jdContent = jdContent.replace(/URL:.*\n/, '');
       }
-      
-      // 跳过 "## Job Description" 行
       jdContent = jdContent.replace(/##\s*Job\s*Description\s*\n?/i, '');
-      
-      // 取前50个字符作为标题
       const title = jdContent.trim().substring(0, 50).replace(/\n/g, ' ').trim();
-      const finalTitle = title.length < jdContent.trim().length ? title + '...' : title;
-
-      // 读取状态
-      const status = readStatus(jobId);
-      const outDir = join(process.cwd(), 'out', jobId);
-      const progressPath = join(outDir, '.progress');
-      let progress: string | undefined;
-      if (existsSync(progressPath)) {
-        try {
-          progress = readFileSync(progressPath, 'utf-8').trim() || undefined;
-        } catch (_) {}
-      }
+      const finalTitle =
+        title.length < jdContent.trim().length ? title + '...' : title;
 
       return {
         id: jobId,
         title: finalTitle,
         content: jdContent.trim(),
-        status,
-        hasCompanyProfile,
-        progress,
+        status: pack.readStatus(jobId),
+        hasCompanyProfile: pack.readPack(jobId).hasCompanyInfo,
+        progress: pack.getProgress(jobId),
       };
     });
 
@@ -1294,25 +1769,15 @@ app.post('/api/ingest', (req, res) => {
     }
 
     const jdText = jd.trim();
-    const companyText = (companyInfo && typeof companyInfo === 'string') ? companyInfo.trim() : '';
-    const urlMatch = jdText.match(/https?:\/\/[^\s]+/);
-    const url = urlMatch ? urlMatch[0] : '';
-
+    const companyText =
+      companyInfo && typeof companyInfo === 'string' ? companyInfo.trim() : '';
     const timestamp = Date.now();
     const jobId = `${timestamp}`;
 
-    const jobsDir = join(process.cwd(), 'jobs');
-    if (!existsSync(jobsDir)) {
-      mkdirSync(jobsDir, { recursive: true });
-    }
-
-    const jdPath = join(jobsDir, `${jobId}.md`);
-    writeFileSync(jdPath, `${url ? `URL: ${url}\n\n` : ''}${jdText}`, 'utf-8');
-
-    if (companyText) {
-      const companyPath = join(jobsDir, `${jobId}.company.txt`);
-      writeFileSync(companyPath, companyText, 'utf-8');
-    }
+    pack.saveJobInputs(jobId, {
+      jd: jdText,
+      companyInfo: companyText,
+    });
 
     res.json({
       success: true,
@@ -1330,25 +1795,11 @@ app.post('/api/ingest', (req, res) => {
 app.delete('/api/jobs/:jobId', (req, res) => {
   try {
     const { jobId } = req.params;
-    const jdPath = join(process.cwd(), 'jobs', `${jobId}.md`);
-    const companyPath = join(process.cwd(), 'jobs', `${jobId}.company.txt`);
-
-    if (existsSync(jdPath)) {
-      unlinkSync(jdPath);
-    }
-    if (existsSync(companyPath)) {
-      unlinkSync(companyPath);
-    }
-
-    // 可选：同时删除输出目录
-    // if (existsSync(outDir)) {
-    //   // 递归删除目录的逻辑可以在这里添加
-    // }
-
+    pack.deleteJob(jobId);
     res.json({ success: true });
   } catch (error) {
-    res.status(500).json({ 
-      error: error instanceof Error ? error.message : 'Unknown error' 
+    res.status(500).json({
+      error: error instanceof Error ? error.message : 'Unknown error',
     });
   }
 });
@@ -1357,50 +1808,23 @@ app.delete('/api/jobs/:jobId', (req, res) => {
 app.get('/api/results/:jobId', (req, res) => {
   try {
     const { jobId } = req.params;
-    const outDir = join(process.cwd(), 'out', jobId);
-    const jobsDir = join(process.cwd(), 'jobs');
-    const companyPath = join(jobsDir, `${jobId}.company.txt`);
-    const hasCompanyProfile = existsSync(companyPath) && readFileSync(companyPath, 'utf-8').trim().length > 0;
-
-    if (!existsSync(outDir)) {
-      return res.json({ exists: false, hasCompanyProfile });
-    }
-
-    const results: any = { exists: true, hasCompanyProfile };
-
-    // 读取响应文件
-    const files: Record<string, string> = {
-      companyProfile: 'company-profile.raw.txt',
-      painPoints: 'pain-points.raw.txt',
-      mapping: 'mapping.raw.txt',
-      experienceBullets: 'experience-bullets.extracted.txt',
-      summary: 'summary.raw.txt',
-      coverLetter: 'cover-letter.raw.txt',
-      review: 'review.raw.txt',
-      regenerateFeedback: 'regenerate-feedback.raw.md',
-    };
-
-    for (const [key, filename] of Object.entries(files)) {
-      const filePath = join(outDir, filename);
-      if (existsSync(filePath)) {
-        try {
-          results[key] = readFileSync(filePath, 'utf-8');
-        } catch (e) {
-          // 忽略读取错误
-        }
-      }
-    }
-
-    results.truncated = {
-      companyResearch: existsSync(join(outDir, 'company-profile.truncated')),
-      painPoints: existsSync(join(outDir, 'pain-points.truncated')),
-      mapping: existsSync(join(outDir, 'mapping.truncated')),
-    };
-
-    res.json(results);
+    const results = pack.readPack(jobId);
+    res.json({
+      exists: results.exists,
+      hasCompanyProfile: results.hasCompanyInfo,
+      companyProfile: results.companyProfile,
+      painPoints: results.painPoints,
+      mapping: results.mapping,
+      experienceBullets: results.experienceBullets,
+      summary: results.summary,
+      coverLetter: results.coverLetter,
+      review: results.review,
+      regenerateFeedback: results.regenerateFeedback,
+      truncated: results.truncation,
+    });
   } catch (error) {
-    res.status(500).json({ 
-      error: error instanceof Error ? error.message : 'Unknown error' 
+    res.status(500).json({
+      error: error instanceof Error ? error.message : 'Unknown error',
     });
   }
 });
@@ -1414,44 +1838,21 @@ app.post('/api/regenerate/:jobId', async (req, res) => {
     if (!apiKey) {
       return res.status(500).json({ error: 'OPENAI_API_KEY not set' });
     }
-    res.json({ success: true, message: 'Regenerate started in background; review will run after completion.' });
+    res.json({
+      success: true,
+      message: 'Regenerate started in background; review will run after completion.',
+    });
 
     setImmediate(async () => {
-      const outDir = join(process.cwd(), 'out', jobId);
-      const jobsDir = join(process.cwd(), 'jobs');
-      const progressPath = join(outDir, '.progress');
       try {
-        if (!existsSync(outDir)) mkdirSync(outDir, { recursive: true });
-        writeFileSync(progressPath, 'regenerate', 'utf-8');
-        console.log(`[Regenerate] Job ${jobId}: 1/2 更新摘要、经历要点、求职信...`);
-
         const model = process.env.OPENAI_MODEL || 'gpt-5.2';
         const responsesModel = process.env.OPENAI_RESPONSES_MODEL || 'gpt-4o';
         const openai = new OpenAIService({ apiKey, model, responsesModel });
-        await regenerateResumeContent(openai, jobId, feedback);
-
-        writeFileSync(progressPath, 'review', 'utf-8');
-        console.log(`[Regenerate] Job ${jobId}: 2/2 运行审查...`);
-
-        const companyProfile = existsSync(join(outDir, 'company-profile.raw.txt'))
-          ? readFileSync(join(outDir, 'company-profile.raw.txt'), 'utf-8') : '';
-        const painPoints = existsSync(join(outDir, 'pain-points.raw.txt'))
-          ? readFileSync(join(outDir, 'pain-points.raw.txt'), 'utf-8') : '';
-        const mapping = existsSync(join(outDir, 'mapping.raw.txt'))
-          ? readFileSync(join(outDir, 'mapping.raw.txt'), 'utf-8') : '';
-        const summary = readFileSync(join(outDir, 'summary.raw.txt'), 'utf-8');
-        const experienceBullets = readFileSync(join(outDir, 'experience-bullets.extracted.txt'), 'utf-8');
-        const coverLetter = readFileSync(join(outDir, 'cover-letter.raw.txt'), 'utf-8');
-        const jdPath = join(jobsDir, `${jobId}.md`);
-        const jdText = existsSync(jdPath) ? readFileSync(jdPath, 'utf-8').trim() : '';
-
-        updateStepStatus(jobId, 'review', 'pending');
-        await generateReview(openai, jobId, companyProfile, painPoints, mapping, experienceBullets, summary, coverLetter, jdText, true);
-
-        if (existsSync(progressPath)) unlinkSync(progressPath);
+        console.log(`[Regenerate] Job ${jobId}: updating pack + review...`);
+        await pack.regeneratePack(jobId, feedback, { model: openai });
         console.log(`[Regenerate] Job ${jobId}: 完成`);
       } catch (err) {
-        if (existsSync(progressPath)) try { unlinkSync(progressPath); } catch (_) {}
+        pack.setProgress(jobId, null);
         console.error('Regenerate/review error:', err);
       }
     });
@@ -1465,34 +1866,14 @@ app.post('/api/regenerate/:jobId', async (req, res) => {
 // API: 清理所有数据
 app.post('/api/clear-all', (req, res) => {
   try {
-    const jobsDir = join(process.cwd(), 'jobs');
-    const outDir = join(process.cwd(), 'out');
-
-    // 删除 jobs 目录中的所有文件
-    if (existsSync(jobsDir)) {
-      const jobFiles = readdirSync(jobsDir);
-      for (const file of jobFiles) {
-        if (file.endsWith('.md') || file.endsWith('.company.txt')) {
-          unlinkSync(join(jobsDir, file));
-        }
-      }
-    }
-
-    // 删除 out 目录中的所有内容
-    if (existsSync(outDir)) {
-      const outDirs = readdirSync(outDir);
-      for (const dir of outDirs) {
-        rmSync(join(outDir, dir), { recursive: true, force: true });
-      }
-    }
-
-    res.json({ 
-      success: true, 
-      message: 'All data cleared successfully' 
+    pack.clearAllJobsAndOutputs();
+    res.json({
+      success: true,
+      message: 'All data cleared successfully',
     });
   } catch (error) {
-    res.status(500).json({ 
-      error: error instanceof Error ? error.message : 'Unknown error' 
+    res.status(500).json({
+      error: error instanceof Error ? error.message : 'Unknown error',
     });
   }
 });

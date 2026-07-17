@@ -15,8 +15,11 @@ export type Template = z.infer<typeof TemplateSchema>;
  * Load a Prompt Template by name from templates/{name}.jsonprompt.
  * Templates are English-only; see ADR-0001.
  */
-export function loadTemplate(templateName: string): Template {
-  const templatePath = join(process.cwd(), 'templates', `${templateName}.jsonprompt`);
+export function loadTemplate(
+  templateName: string,
+  templatesRoot: string = join(process.cwd(), 'templates')
+): Template {
+  const templatePath = join(templatesRoot, `${templateName}.jsonprompt`);
   try {
     const content = readFileSync(templatePath, 'utf-8');
     const json = JSON.parse(content);
