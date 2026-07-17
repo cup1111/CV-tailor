@@ -1,9 +1,8 @@
-import { join } from 'path';
 import { z } from 'zod';
 import type { PackStore } from './store.js';
 import type { ModelPort } from './types.js';
 import { runReview } from './lifecycle.js';
-import { parseStepOutput, preparePrompt } from './prompt-contracts.js';
+import { parseStepOutput, runJsonPromptStep } from './prompt-contracts.js';
 
 const RegenerateExperienceSchema = z.object({
   company: z.string(),
@@ -66,9 +65,11 @@ export async function regeneratePackForJob(args: {
   store.setProgress(jobId, 'regenerate');
 
   try {
-    const rendered = preparePrompt(
-      'regenerate',
-      {
+    const result = await runJsonPromptStep({
+      store,
+      jobId,
+      step: 'regenerate',
+      variables: {
         jd: inputs.jd,
         companyProfile: companyProfile || EMPTY_PLACEHOLDER,
         painPoints: painPoints || EMPTY_PLACEHOLDER,
@@ -80,11 +81,10 @@ export async function regeneratePackForJob(args: {
           feedback.trim() ||
           'Please improve alignment with the JD and company without adding new claims.',
       },
-      templatesRoot
-    );
-
-    const rawPath = join(store.outDir(jobId), 'regenerate.raw.json');
-    const result = await model.generateJson(rendered, RegenerateOutputSchema, 3, rawPath);
+      model,
+      templatesRoot,
+      schema: RegenerateOutputSchema,
+    });
 
     const experienceRaw = experiencesToRaw(result.experiences);
     const parsed = parseStepOutput('experience-bullets', experienceRaw);
