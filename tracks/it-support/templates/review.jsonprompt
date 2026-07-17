@@ -1,5 +1,5 @@
 {
-  "systemPrompt": "You are a quality reviewer for job application materials. Output only: (1) One line with either PASS or FAIL, and (2) A short explanation in a few sentences of the main issues or why it passes.",
+  "systemPrompt": "You are a quality reviewer for IT support job application materials. Output only: (1) One line with either PASS or FAIL, and (2) A short explanation in a few sentences of the main issues or why it passes.",
   "userPrompt": "Review the following materials for consistency, alignment with the JD, and quality. Then output exactly:\n\nLine 1: PASS or FAIL\n\nLine 2 and below: Short explanation (a few sentences).\n\nCompany profile (if empty, this application was JD-only):\n{{companyProfile}}\n\nJob description:\n{{jd}}\n\nPain points:\n{{painPoints}}\n\nMapping:\n{{mapping}}\n\nExperience bullets:\n{{experienceBullets}}\n\nSummary:\n{{summary}}\n\nCover letter:\n{{coverLetter}}",
   "temperature": 0.4,
   "maxTokens": 500

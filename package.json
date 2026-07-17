@@ -12,7 +12,9 @@
     "dev": "tsx src/cli.ts",
     "ingest": "tsx src/cli.ts ingest",
     "generate": "tsx src/cli.ts generate",
-    "start": "node dist/cli.js"
+    "start": "node dist/cli.js",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "keywords": [
     "resume",
@@ -36,6 +38,7 @@
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^20.10.5",
     "tsx": "^4.7.0",
-    "typescript": "^5.3.3"
+    "typescript": "^5.3.3",
+    "vitest": "^4.1.10"
   }
 }

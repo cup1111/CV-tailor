@@ -37,15 +37,17 @@ A tool that generates job application materials from job descriptions (JDs): pai
 
    - `OPENAI_API_KEY` — your OpenAI API key (required)
 
-   Optional: `OPENAI_MODEL`, `OPENAI_RESPONSES_MODEL`, `LANG` (see below).
+   Optional: `OPENAI_MODEL`, `OPENAI_RESPONSES_MODEL` (see below).
 
-4. Profile (your resume data):
+4. Profile (your resume data per Application Track):
 
    ```bash
-   cp profile.example.yaml profile.yaml
+   cp tracks/software-engineering/profile.example.yaml tracks/software-engineering/profile.yaml
+   # optional second track:
+   cp tracks/it-support/profile.example.yaml tracks/it-support/profile.yaml
    ```
 
-   Edit `profile.yaml` with your name, email, work experiences, education, and skills. `profile.yaml` is gitignored and will not be committed.
+   Edit the Profile for the Track you will use. Set the active Track in `track.yaml` (`activeTrack: software-engineering` or `it-support`). Track Profiles are gitignored.
 
 ## Usage
 
@@ -96,31 +98,40 @@ All outputs are under `out/{job_id}/` (e.g. `company-profile.raw.txt`, `pain-poi
 
 ```
 job/
-  profile.example.yaml   # Sample profile; copy to profile.yaml (gitignored)
-  .env.example           # Sample env; copy to .env (gitignored)
-  templates/             # JSON prompt templates (en/zh by LANG)
+  track.yaml             # active Application Track
+  tracks/
+    software-engineering/
+      profile.example.yaml
+      templates/
+    it-support/
+      profile.example.yaml
+      templates/
+  .env.example
   src/
-    cli.ts               # CLI entry
-    server.ts            # Express app + web UI
+    cli.ts
+    server.ts
     commands/
-      ingest.ts          # Starts server
-      generate.ts        # 7-step generation + regenerate-on-FAIL
     services/
-      openai.ts          # OpenAI client
-      template.ts        # Template loader
-      status.ts          # Step status
-      regenerate.ts      # Regenerate summary/experience/cover letter
-      archive.ts         # Archive list, archive, restore
-  out/                   # Generated outputs (gitignored)
-  jobs/                  # Stored JDs (gitignored)
-  archive/               # Archived jobs (gitignored)
+      track.ts           # resolve active Track / Profile / templates
+    application-pack/
+  out/
+  jobs/
+  archive/
 ```
 
 ## Configuration
 
-### profile.yaml
+### Application Track (`track.yaml`)
 
-Create from `profile.example.yaml`. Include:
+```yaml
+activeTrack: software-engineering   # or it-support
+```
+
+Generation loads Profile + Prompt Templates from `tracks/{activeTrack}/`. Changing the active Track (via `track.yaml` or the UI switcher in the top nav) marks existing Application Packs as stale until regenerated (ADR-0002).
+
+### Profile (`tracks/{track}/profile.yaml`)
+
+Create from that Track's `profile.example.yaml`. Include:
 
 - `personal`: name, email, phone, linkedin, github
 - `experiences`: list of `company`, `role`, `startDate`, `endDate`, `description`, optional `bulletCount` / `wordCount`
@@ -135,11 +146,10 @@ Create from `profile.example.yaml`. Include:
 | `OPENAI_API_KEY` | Yes | OpenAI API key |
 | `OPENAI_MODEL` | No | Chat model (default from env or gpt-4o) |
 | `OPENAI_RESPONSES_MODEL` | No | Model for web search (default gpt-4o) |
-| `LANG` | No | Prompt language: `en` or `zh` (default `en`) |
 
 ### Templates
 
-Templates live under `templates/` (and optionally `templates/en/`, `templates/zh/` when using `LANG`). Each is a JSON file with `systemPrompt`, `userPrompt`, and optional `temperature`, `maxTokens`. Variables use `{{name}}` and are filled at runtime.
+Prompt Templates live under `tracks/{track}/templates/` as English-only JSON files (`systemPrompt`, `userPrompt`, optional `temperature`, `maxTokens`). Variables use `{{name}}` and are filled at runtime. UI Locale (`?lang=`) does not select templates — see ADR-0001. Track selection is via `track.yaml` — see ADR-0002.
 
 ## Development
 
@@ -159,7 +169,7 @@ MIT
 
 本工具根据职位描述（JD）自动生成求职材料：招聘痛点、经历要点、简历摘要、求职信和审查。提供网页界面添加职位、查看结果、重新生成与存档。
 
-**安装：** 克隆项目后执行 `pnpm install`，复制 `.env.example` 为 `.env` 并填写 `OPENAI_API_KEY`，复制 `profile.example.yaml` 为 `profile.yaml` 并填写个人经历与技能。
+**安装：** 克隆项目后执行 `pnpm install`，复制 `.env.example` 为 `.env` 并填写 `OPENAI_API_KEY`；复制对应 Track 下的 `profile.example.yaml` 为 `profile.yaml`，并在 `track.yaml` 中设置 `activeTrack`（`software-engineering` 或 `it-support`）。
 
 **使用：** 运行 `pnpm run ingest` 启动服务，在浏览器打开 http://localhost:3000，在“工作区”添加 JD 后点击“生成”，在“查看结果”中查看并复制内容；可使用“重新生成”根据反馈修改摘要/经历/求职信，或使用“存档”将职位移至存档区。
 

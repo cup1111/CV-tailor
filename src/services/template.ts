@@ -1,6 +1,7 @@
-import { readFileSync, existsSync } from 'fs';
+import { readFileSync } from 'fs';
 import { join } from 'path';
 import { z } from 'zod';
+import { resolveActiveTrack } from './track.js';
 
 const TemplateSchema = z.object({
   systemPrompt: z.string(),
@@ -12,22 +13,21 @@ const TemplateSchema = z.object({
 export type Template = z.infer<typeof TemplateSchema>;
 
 /**
- * Load a template by name and optional locale (en | zh).
- * If lang is set, tries templates/{lang}/{name}.jsonprompt first, then templates/{name}.jsonprompt.
+ * Load a Prompt Template by name from {templatesRoot}/{name}.jsonprompt.
+ * Defaults to the active Application Track templates (ADR-0002). English-only (ADR-0001).
  */
-export function loadTemplate(templateName: string, lang?: string): Template {
-  const templatesDir = join(process.cwd(), 'templates');
-  let templatePath = lang ? join(templatesDir, lang, `${templateName}.jsonprompt`) : join(templatesDir, `${templateName}.jsonprompt`);
-  if (lang && !existsSync(templatePath)) {
-    templatePath = join(templatesDir, `${templateName}.jsonprompt`);
-  }
+export function loadTemplate(
+  templateName: string,
+  templatesRoot: string = resolveActiveTrack().templatesRoot
+): Template {
+  const templatePath = join(templatesRoot, `${templateName}.jsonprompt`);
   try {
     const content = readFileSync(templatePath, 'utf-8');
     const json = JSON.parse(content);
     return TemplateSchema.parse(json);
   } catch (error) {
     throw new Error(
-      `Failed to load template ${templateName}${lang ? ` (lang=${lang})` : ''}: ${error instanceof Error ? error.message : String(error)}`
+      `Failed to load template ${templateName}: ${error instanceof Error ? error.message : String(error)}`
     );
   }
 }
