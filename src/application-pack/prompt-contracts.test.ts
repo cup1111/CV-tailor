@@ -14,7 +14,11 @@ import {
   PROMPT_CONTRACTS,
 } from './prompt-contracts.js';
 
-const repoTemplates = join(import.meta.dirname, '../..', 'templates');
+const repoTemplates = join(
+  import.meta.dirname,
+  '../..',
+  'tracks/software-engineering/templates'
+);
 
 describe('Prompt Template contracts', () => {
   let root: string;

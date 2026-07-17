@@ -9,6 +9,12 @@ import {
 import { OpenAIService } from './services/openai.js';
 import { createApplicationPackModule } from './application-pack/index.js';
 import { UI_STRINGS, type Locale } from './i18n.js';
+import {
+  TRACK_IDS,
+  getActiveTrackId,
+  setActiveTrackId,
+  type TrackId,
+} from './services/track.js';
 
 const pack = createApplicationPackModule();
 
@@ -673,6 +679,41 @@ function buildHtml(lang: Locale): string {
             border-bottom: 2px solid #007bff;
             margin-bottom: -2px;
         }
+        .track-switcher {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-left: auto;
+            padding: 8px 0;
+            font-size: 14px;
+            color: #555;
+        }
+        .track-switcher label {
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        .track-switcher select {
+            padding: 6px 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            background: #fff;
+            font-size: 14px;
+            max-width: 220px;
+        }
+        .track-switcher .track-hint {
+            display: none;
+            font-size: 12px;
+            color: #888;
+            max-width: 280px;
+        }
+        @media (min-width: 900px) {
+            .track-switcher .track-hint { display: inline; }
+        }
+        .lang-switcher {
+            padding: 12px 0;
+            margin-left: 16px;
+            white-space: nowrap;
+        }
         .view-panel { display: none; }
         .view-panel.active { display: block; }
         .confetti-layer {
@@ -741,7 +782,15 @@ function buildHtml(lang: Locale): string {
         <nav class="top-nav">
             <a href="#" class="active" id="navWorkspace" onclick="switchTab('workspace'); return false;">{{navWorkspace}}</a>
             <a href="#" id="navArchive" onclick="switchTab('archive'); return false;">{{navArchive}}</a>
-            <span style="margin-left:auto;padding:12px 0;"><a href="?lang=en" class="{{langEnActive}}" style="text-decoration:none;color:inherit;">{{langSwitcherEn}}</a> | <a href="?lang=zh" class="{{langZhActive}}" style="text-decoration:none;color:inherit;">{{langSwitcherZh}}</a></span>
+            <span class="track-switcher">
+                <label for="activeTrackSelect">{{trackLabel}}</label>
+                <select id="activeTrackSelect" onchange="switchApplicationTrack(this.value)" title="{{trackSwitchHint}}">
+                    <option value="software-engineering">{{trackSoftwareEngineering}}</option>
+                    <option value="it-support">{{trackItSupport}}</option>
+                </select>
+                <span class="track-hint">{{trackSwitchHint}}</span>
+            </span>
+            <span class="lang-switcher"><a href="?lang=en" class="{{langEnActive}}" style="text-decoration:none;color:inherit;">{{langSwitcherEn}}</a> | <a href="?lang=zh" class="{{langZhActive}}" style="text-decoration:none;color:inherit;">{{langSwitcherZh}}</a></span>
         </nav>
 
         <div id="workspaceView" class="view-panel active">
@@ -1059,7 +1108,39 @@ function buildHtml(lang: Locale): string {
             renderDailyStarBuddy();
             refreshMotivation();
             refreshList();
+            loadActiveTrack();
         });
+
+        async function loadActiveTrack() {
+            try {
+                const res = await fetch('/api/track');
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || UI.requestFailed);
+                const sel = document.getElementById('activeTrackSelect');
+                if (sel && data.activeTrack) sel.value = data.activeTrack;
+            } catch (error) {
+                console.error('loadActiveTrack', error);
+            }
+        }
+
+        async function switchApplicationTrack(trackId) {
+            const sel = document.getElementById('activeTrackSelect');
+            try {
+                const res = await fetch('/api/track', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ activeTrack: trackId }),
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || UI.requestFailed);
+                showMessage('✓ ' + UI.trackSwitchOk, 'success');
+                refreshList();
+            } catch (error) {
+                showMessage('✗ ' + UI.trackSwitchFailed + error.message, 'error');
+                await loadActiveTrack();
+                if (sel) { /* restored from server */ }
+            }
+        }
 
         // 文件上传处理
         document.getElementById('fileUpload').addEventListener('change', async (e) => {
@@ -1135,11 +1216,14 @@ function buildHtml(lang: Locale): string {
                     const modeClass = job.hasCompanyInfo ? 'has-company-profile' : 'jd-only';
                     const modeBadgeClass = job.hasCompanyInfo ? 'has-company' : 'jd-only';
                     const modeText = job.hasCompanyInfo ? UI.modeHasCompany : UI.modeJdOnly;
+                    const staleBadge = job.stale
+                        ? \` <span class="jd-mode-badge jd-only">\${UI.modeStalePack}</span>\`
+                        : '';
                     return \`
                         <div class="jd-item \${modeClass}" data-job-id="\${job.id}">
                             <div class="jd-item-header">
                                 <div>
-                                    <div class="jd-item-title">\${title} <span class="jd-mode-badge \${modeBadgeClass}">\${modeText}</span></div>
+                                    <div class="jd-item-title">\${title} <span class="jd-mode-badge \${modeBadgeClass}">\${modeText}</span>\${staleBadge}</div>
                                     <div class="jd-item-id">ID: \${job.id}</div>
                                 </div>
                                 <div class="jd-item-actions">
@@ -1940,6 +2024,37 @@ app.post('/api/archive/:jobId/restore', (req, res) => {
     res.json({ success: true, jobId });
   } catch (error) {
     res.status(404).json({ error: error instanceof Error ? error.message : 'Unknown error' });
+  }
+});
+
+// API: active Application Track (track.yaml is source of truth)
+app.get('/api/track', (req, res) => {
+  try {
+    res.json({
+      activeTrack: getActiveTrackId(),
+      tracks: TRACK_IDS.map((id) => ({ id })),
+    });
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Unknown error' });
+  }
+});
+
+app.put('/api/track', (req, res) => {
+  try {
+    const activeTrack = req.body?.activeTrack;
+    if (!activeTrack || !(TRACK_IDS as readonly string[]).includes(activeTrack)) {
+      return res.status(400).json({
+        error: `activeTrack must be one of: ${TRACK_IDS.join(', ')}`,
+      });
+    }
+    const id = setActiveTrackId(activeTrack as TrackId);
+    res.json({
+      success: true,
+      activeTrack: id,
+      templatesRoot: pack.templatesRoot,
+    });
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Unknown error' });
   }
 });
 

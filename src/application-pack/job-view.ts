@@ -1,5 +1,9 @@
 import type { PackStore } from './store.js';
 import type { JobView } from './types.js';
+import {
+  isPackStaleForActiveTrack,
+  readPackTrackId,
+} from '../services/track.js';
 
 function displayJd(jd: string): { title: string; content: string } {
   let jdContent = jd;
@@ -19,9 +23,12 @@ function displayJd(jd: string): { title: string; content: string } {
 
 /** Build the read-only workspace view for one job. */
 export function buildJobView(store: PackStore, jobId: string): JobView {
+  const workspaceRoot = store.getWorkspaceRoot();
   const inputs = store.loadJobInputs(jobId);
   const { title, content } = displayJd(inputs.jd);
   const status = store.readStatus(jobId);
+  const pack = store.readPack(jobId);
+  const recorded = readPackTrackId(workspaceRoot, jobId);
   return {
     id: jobId,
     title,
@@ -30,6 +37,8 @@ export function buildJobView(store: PackStore, jobId: string): JobView {
     status,
     progress: store.getProgress(jobId),
     packComplete: status?.steps.review === 'completed',
+    stale: isPackStaleForActiveTrack(workspaceRoot, jobId, pack.exists),
+    applicationTrack: recorded ?? undefined,
   };
 }
 

@@ -8,3 +8,4 @@ jobs/*.md
 archive/
 jobs/
 profile.yaml
+tracks/*/profile.yaml

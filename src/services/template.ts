@@ -1,6 +1,7 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { z } from 'zod';
+import { resolveActiveTrack } from './track.js';
 
 const TemplateSchema = z.object({
   systemPrompt: z.string(),
@@ -12,12 +13,12 @@ const TemplateSchema = z.object({
 export type Template = z.infer<typeof TemplateSchema>;
 
 /**
- * Load a Prompt Template by name from templates/{name}.jsonprompt.
- * Templates are English-only; see ADR-0001.
+ * Load a Prompt Template by name from {templatesRoot}/{name}.jsonprompt.
+ * Defaults to the active Application Track templates (ADR-0002). English-only (ADR-0001).
  */
 export function loadTemplate(
   templateName: string,
-  templatesRoot: string = join(process.cwd(), 'templates')
+  templatesRoot: string = resolveActiveTrack().templatesRoot
 ): Template {
   const templatePath = join(templatesRoot, `${templateName}.jsonprompt`);
   try {

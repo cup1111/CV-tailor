@@ -57,8 +57,10 @@ export type ModelPort = {
 export type ApplicationPackModuleOptions = {
   /** Workspace root containing jobs/ and out/. Defaults to process.cwd(). */
   workspaceRoot?: string;
-  /** Directory of English Prompt Templates. Defaults to workspaceRoot/templates. */
+  /** Directory of English Prompt Templates. Defaults to the active Application Track. */
   templatesRoot?: string;
+  /** Active Application Track id recorded on generated packs. Defaults from track.yaml. */
+  applicationTrackId?: string;
 };
 
 /**
@@ -77,4 +79,11 @@ export type JobView = {
   progress?: string;
   /** True when the review step is completed. */
   packComplete: boolean;
+  /**
+   * True when the pack was generated under a different Application Track
+   * than the workspace active Track (or legacy unmarked packs vs a non-default Track).
+   */
+  stale: boolean;
+  /** Track id recorded on the pack, if any (legacy packs omit this on disk). */
+  applicationTrack?: string;
 };

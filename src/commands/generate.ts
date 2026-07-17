@@ -1,23 +1,11 @@
-import { readFileSync, existsSync } from 'fs';
-import { join } from 'path';
-import { load } from 'js-yaml';
+import { loadActiveProfile } from '../services/track.js';
 import pLimit from 'p-limit';
 import { OpenAIService } from '../services/openai.js';
-import { Profile, ProfileSchema } from '../types/profile.js';
+import type { Profile } from '../types/profile.js';
 import {
   createApplicationPackModule,
   type ApplicationPackModule,
 } from '../application-pack/index.js';
-
-function loadProfile(): Profile {
-  const profilePath = join(process.cwd(), 'profile.yaml');
-  if (!existsSync(profilePath)) {
-    throw new Error('profile.yaml not found. Please create it first.');
-  }
-  const content = readFileSync(profilePath, 'utf-8');
-  const yaml = load(content);
-  return ProfileSchema.parse(yaml);
-}
 
 function createModel(): OpenAIService {
   const apiKey = process.env.OPENAI_API_KEY;
@@ -36,10 +24,11 @@ export async function generateCommand(options: {
   job?: string;
   concurrency?: number;
   pack?: ApplicationPackModule;
+  profile?: Profile;
 }) {
   const openai = createModel();
   const pack = options.pack ?? createApplicationPackModule();
-  const profile = loadProfile();
+  const profile = options.profile ?? loadActiveProfile(pack.workspaceRoot);
 
   let jobIds: string[];
   if (options.job) {
@@ -64,7 +53,7 @@ export async function generateCommand(options: {
   const limit = pLimit(concurrency);
 
   console.log(
-    `🚀 Starting generation for ${jobIds.length} job(s) with concurrency ${concurrency}`
+    `🚀 Starting generation for ${jobIds.length} job(s) with concurrency ${concurrency} (track: ${pack.applicationTrackId})`
   );
 
   await Promise.all(

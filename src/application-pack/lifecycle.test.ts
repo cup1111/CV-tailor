@@ -9,7 +9,7 @@ import type { ModelPort } from './types.js';
 import type { ChatCompletionOptions } from '../services/openai.js';
 
 const repoRoot = join(import.meta.dirname, '../..');
-const templatesRoot = join(repoRoot, 'templates');
+const templatesRoot = join(repoRoot, 'tracks/software-engineering/templates');
 
 const sampleProfile: Profile = {
   personal: {

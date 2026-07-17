@@ -34,6 +34,10 @@ export type ArtifactWrite = {
 export class PackStore {
   constructor(private readonly workspaceRoot: string) {}
 
+  getWorkspaceRoot(): string {
+    return this.workspaceRoot;
+  }
+
   jobsDir(): string {
     return join(this.workspaceRoot, 'jobs');
   }

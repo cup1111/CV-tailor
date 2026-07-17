@@ -32,11 +32,13 @@ describe('Application Pack job view', () => {
     const withCompany = jobs.find((j) => j.id === '100')!;
     expect(withCompany.hasCompanyInfo).toBe(true);
     expect(withCompany.packComplete).toBe(false);
+    expect(withCompany.stale).toBe(false);
     expect(withCompany.title).toContain('Senior backend');
     expect(withCompany.progress).toBeUndefined();
 
     const jdOnly = jobs.find((j) => j.id === '200')!;
     expect(jdOnly.hasCompanyInfo).toBe(false);
+    expect(jdOnly.stale).toBe(false);
   });
 
   it('listIncompleteJobIds skips packs whose review step is complete', () => {

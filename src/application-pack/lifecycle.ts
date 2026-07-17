@@ -1,4 +1,5 @@
 import type { Profile } from '../types/profile.js';
+import { writePackTrackId, type TrackId } from '../services/track.js';
 import type { PackStore } from './store.js';
 import type { ModelPort } from './types.js';
 import { runPromptStep } from './prompt-contracts.js';
@@ -52,9 +53,13 @@ export async function generatePackForJob(args: {
   model: ModelPort;
   templatesRoot: string;
   workspaceRoot: string;
+  applicationTrackId: TrackId;
 }): Promise<{ reviewFailed: boolean }> {
-  const { store, jobId, profile, model, templatesRoot } = args;
+  const { store, jobId, profile, model, templatesRoot, workspaceRoot, applicationTrackId } =
+    args;
   store.getOrCreateStatus(jobId);
+  store.ensureOutDir(jobId);
+  writePackTrackId(workspaceRoot, jobId, applicationTrackId);
   const inputs = store.loadJobInputs(jobId);
   const jdText = inputs.jd;
   const hasCompanyInfo = !!inputs.companyInfo.trim();

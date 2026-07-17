@@ -9,16 +9,20 @@ The language of the web interface presented to the user (`en` or `zh`). User-fac
 _Avoid_: LANG, prompt language, template language, hard-coded UI strings
 
 **Prompt Template**:
-The English instruction text used for one AI generation step. This project has a single English source; UI Locale does not change it.
-_Avoid_: localized template, templates/en, templates/zh, LANG, PROMPT_LANG
+The English instruction text used for one AI generation step within an Application Track. Each Track owns a complete set of Prompt Templates; UI Locale does not select or translate them.
+_Avoid_: localized template, templates/en, templates/zh, LANG, PROMPT_LANG, shared cross-track template
 
 **Experience Bullet**:
-A factual resume bullet for one past role, produced for a specific job application. Primary quality bar is fit to that JD (and company when provided); honesty about what the candidate actually did is a hard constraint — no invented skills, scope, or seniority.
-_Avoid_: generic achievement line, buzzword filler
+A factual resume bullet for one past role, produced for a specific job application. Primary quality bar is fit to that JD (and company when provided); honesty about what the candidate actually did is a hard constraint — no invented skills, scope, or seniority. When the same past role appears in another Application Track's Profile, the role title stays as it was; only the description emphasis may change to facts that still hold.
+_Avoid_: generic achievement line, buzzword filler, retitled past role
 
 **Application Pack**:
-The set of materials generated for one job application: at minimum experience bullets, CV summary, and cover letter (plus upstream research/mapping/review that feed them).
+The set of materials generated for one job application: at minimum experience bullets, CV summary, and cover letter (plus upstream research/mapping/review that feed them). An Application Pack becomes stale if the workspace active Application Track changes after it was generated.
 _Avoid_: resume pack (ambiguous), full CV file
+
+**Profile**:
+The candidate's source facts for one Application Track: personal details, experiences, education, skills, and optional extras. Each Track owns a complete Profile; generation never mixes Profiles across Tracks.
+_Avoid_: resume file, CV source, shared personal block
 
 **Company Info**:
 User-provided keywords / notes about the employer, used as Web Search input. Not the generated research write-up.
@@ -29,5 +33,9 @@ The generated company research artifact for one Application Pack (from Web Searc
 _Avoid_: company info, user search keywords
 
 **Job View**:
-The read-only workspace snapshot for one job (title, Company Info flag, generation status, in-flight progress, whether the Application Pack is complete). Adapters list jobs through this view instead of reading status or progress files directly.
+The read-only workspace snapshot for one job (title, Company Info flag, generation status, in-flight progress, whether the Application Pack is complete, and whether that pack is stale relative to the active Application Track). Adapters list jobs through this view instead of reading status or progress files directly.
 _Avoid_: status.json, .progress, hasCompanyProfile (use hasCompanyInfo)
+
+**Application Track**:
+A career-direction bundle: one Profile plus one set of Prompt Templates used to generate Application Packs for that direction. This project has two Tracks: `software-engineering` and `it-support`. Multiple Tracks coexist without overwriting each other; the workspace has one active Track at a time (default `software-engineering`), and all generation uses that Track.
+_Avoid_: career target, profile variant, job type, persona, LANG-based template switch, default (as a Track id)

@@ -1,0 +1,61 @@
+# Copy to profile.yaml for the it-support Application Track.
+# profile.yaml is gitignored and will not be committed.
+
+personal:
+  name: "Your Name"
+  email: "your.email@example.com"
+  phone: "+1 234 567 8900"
+  linkedin: "https://linkedin.com/in/yourprofile"
+  github: "https://github.com/yourusername"
+
+experiences:
+  - company: "Example Product Company"
+    role: "Full Stack Developer"
+    startDate: "2024-01"
+    endDate: "Present"
+    bulletCount: 3
+    wordCount: "25-30"
+    description: |
+      In this Full Stack Developer role, support-facing work included account access,
+      user permissions, operational notifications, and internal admin tooling that
+      helped resolve merchant and user issues — not a dedicated Help Desk title.
+
+      Account access and activation
+      Built registration and activation flows (email verification, token activation,
+      role-based login). Used these when investigating "cannot log in" / "account
+      not activated" style issues with clear steps and expected states.
+
+      User permissions and roles
+      Implemented business-scoped user management and RBAC (invite, update role,
+      restrict actions by role). Supported access questions by checking role
+      assignment and allowed actions rather than guessing.
+
+      Notifications and operational emails
+      Integrated transactional emails for activation, approval/rejection, and site
+      enable/disable events so users received clear status updates.
+
+      Internal admin / escalation support
+      Built superadmin tooling: search businesses, enable/disable sites with email
+      notice, approve/reject with email, and impersonation token for support-style
+      investigation. Documented flows for repeatable handling of common cases.
+
+education:
+  - school: "Your University"
+    degree: "Bachelor of Science"
+    field: "Computer Science"
+    startDate: "2016-09"
+    endDate: "2020-06"
+
+skills:
+  - "User account access troubleshooting"
+  - "Role-based access (RBAC) concepts"
+  - "Email / notification status checks"
+  - "Ticket-style issue notes (clear repro steps)"
+  - "Jira"
+  - "Git"
+  - "Basic SQL lookups"
+  - "Customer-facing status communication"
+
+additionalInfo:
+  certifications: []
+  awards: []
