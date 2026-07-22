@@ -9,6 +9,10 @@ import { PackStore, type ArtifactWrite } from './store.js';
 import { generatePackForJob } from './lifecycle.js';
 import { regeneratePackForJob } from './regenerate.js';
 import { listIncompleteJobIds, listJobs } from './job-view.js';
+import {
+  editJob,
+  type EditJobResult,
+} from './edit-job.js';
 import type {
   ApplicationPack,
   ApplicationPackModuleOptions,
@@ -26,9 +30,14 @@ export type {
   PackTruncation,
 } from './types.js';
 
+export type { EditJobResult } from './edit-job.js';
+export { JobEditBlockedError, JobNotFoundError } from './edit-job.js';
+
 export type ApplicationPackModule = {
   saveJobInputs(jobId: string, inputs: JobInputs): void;
   loadJobInputs(jobId: string): JobInputs;
+  /** Job Edit: update inputs, discard outputs on dirty change, or delete when JD empty. */
+  editJob(jobId: string, inputs: JobInputs): EditJobResult;
   listJobIds(): string[];
   /** Read-only workspace list: title, hasCompanyInfo, status, progress, packComplete, Track. */
   listJobs(): JobView[];
@@ -83,6 +92,7 @@ export function createApplicationPackModule(
     templatesRootForJob,
     saveJobInputs: (jobId, inputs) => store.saveJobInputs(jobId, inputs),
     loadJobInputs: (jobId) => store.loadJobInputs(jobId),
+    editJob: (jobId, inputs) => editJob(store, jobId, inputs),
     listJobIds: () => store.listJobIds(),
     listJobs: () => listJobs(store),
     listIncompleteJobIds: () => listIncompleteJobIds(store),

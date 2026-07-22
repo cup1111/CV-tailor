@@ -30,7 +30,7 @@ describe('Application Pack persistence', () => {
     });
   });
 
-  it('persists Application Track binding on the Job and rejects changing it', () => {
+  it('persists Application Track binding on the Job and allows changing it via save', () => {
     const pack = createApplicationPackModule({ workspaceRoot: root });
     pack.saveJobInputs('job-track', {
       companyInfo: '',
@@ -40,18 +40,16 @@ describe('Application Pack persistence', () => {
 
     expect(pack.loadJobInputs('job-track').applicationTrack).toBe('it-support');
 
-    expect(() =>
-      pack.saveJobInputs('job-track', {
-        companyInfo: '',
-        jd: 'IT helpdesk role updated',
-        applicationTrack: 'software-engineering',
-      })
-    ).toThrow(/Application Track/i);
+    pack.saveJobInputs('job-track', {
+      companyInfo: '',
+      jd: 'IT helpdesk role updated',
+      applicationTrack: 'software-engineering',
+    });
 
     expect(pack.loadJobInputs('job-track')).toEqual({
       companyInfo: '',
-      jd: 'IT helpdesk role',
-      applicationTrack: 'it-support',
+      jd: 'IT helpdesk role updated',
+      applicationTrack: 'software-engineering',
     });
   });
 

@@ -67,22 +67,14 @@ export class PackStore {
 
   saveJobInputs(jobId: string, inputs: JobInputs): void {
     this.ensureJobsDir();
-    const trackPath = join(this.jobsDir(), `${jobId}.track.txt`);
-    if (existsSync(trackPath)) {
-      const existing = parseTrackId(readFileSync(trackPath, 'utf-8'));
-      if (existing != null && existing !== inputs.applicationTrack) {
-        throw new Error(
-          `Application Track binding for job "${jobId}" is immutable ` +
-            `(bound to "${existing}"; cannot change to "${inputs.applicationTrack}")`
-        );
-      }
-    } else if (!(TRACK_IDS as readonly string[]).includes(inputs.applicationTrack)) {
+    if (!(TRACK_IDS as readonly string[]).includes(inputs.applicationTrack)) {
       throw new Error(
         `Invalid Application Track: ${inputs.applicationTrack}. ` +
           `Must be one of ${TRACK_IDS.join(', ')}`
       );
     }
 
+    const trackPath = join(this.jobsDir(), `${jobId}.track.txt`);
     const jdPath = join(this.jobsDir(), `${jobId}.md`);
     const urlMatch = inputs.jd.match(/https?:\/\/[^\s]+/);
     const url = urlMatch ? urlMatch[0] : '';
@@ -98,9 +90,7 @@ export class PackStore {
     } else if (existsSync(companyPath)) {
       unlinkSync(companyPath);
     }
-    if (!existsSync(trackPath)) {
-      writeFileSync(trackPath, `${inputs.applicationTrack}\n`, 'utf-8');
-    }
+    writeFileSync(trackPath, `${inputs.applicationTrack}\n`, 'utf-8');
   }
 
   loadJobInputs(jobId: string): JobInputs {
@@ -240,6 +230,19 @@ export class PackStore {
     };
   }
 
+  hasGenerationOutputs(jobId: string): boolean {
+    const dir = this.outDir(jobId);
+    if (!existsSync(dir)) return false;
+    return readdirSync(dir).length > 0;
+  }
+
+  clearJobOutputs(jobId: string): void {
+    const dir = this.outDir(jobId);
+    if (existsSync(dir)) {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
   deleteJob(jobId: string): void {
     const jdPath = join(this.jobsDir(), `${jobId}.md`);
     const companyPath = join(this.jobsDir(), `${jobId}.company.txt`);
@@ -247,6 +250,7 @@ export class PackStore {
     if (existsSync(jdPath)) unlinkSync(jdPath);
     if (existsSync(companyPath)) unlinkSync(companyPath);
     if (existsSync(trackPath)) unlinkSync(trackPath);
+    this.clearJobOutputs(jobId);
   }
 
   setProgress(jobId: string, phase: string | null): void {

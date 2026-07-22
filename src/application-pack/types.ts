@@ -80,6 +80,8 @@ export type JobView = {
   progress?: string;
   /** True when the review step is completed. */
   packComplete: boolean;
+  /** True when any generation output (complete or partial) exists under this Job. */
+  hasGenerationOutputs: boolean;
   /**
    * Bound Application Track for this Job (sole authority for generation).
    */

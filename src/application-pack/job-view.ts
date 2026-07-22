@@ -30,6 +30,7 @@ export function buildJobView(store: PackStore, jobId: string): JobView {
     status,
     progress: store.getProgress(jobId),
     packComplete: status?.steps.review === 'completed',
+    hasGenerationOutputs: store.hasGenerationOutputs(jobId),
     applicationTrack: inputs.applicationTrack,
   };
 }
