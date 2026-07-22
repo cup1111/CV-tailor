@@ -189,6 +189,10 @@ export function archiveJob(jobId: string): void {
   if (existsSync(companyPath)) {
     renameSync(companyPath, join(destDir, 'company.txt'));
   }
+  const trackPath = join(jobsDir, `${jobId}.track.txt`);
+  if (existsSync(trackPath)) {
+    renameSync(trackPath, join(destDir, 'track.txt'));
+  }
   if (existsSync(outJobDir)) {
     const files = readdirSync(outJobDir);
     for (const f of files) {
@@ -255,8 +259,14 @@ export function restoreJob(jobId: string): void {
   if (existsSync(companySrc)) {
     renameSync(companySrc, companyPath);
   }
+  const trackSrc = join(archiveJobDir, 'track.txt');
+  const trackPath = join(jobsDir, `${jobId}.track.txt`);
+  if (existsSync(trackSrc)) {
+    renameSync(trackSrc, trackPath);
+  }
 
   for (const f of readdirSync(archiveJobDir)) {
+    if (f === 'jd.md' || f === 'company.txt' || f === 'track.txt') continue;
     const src = join(archiveJobDir, f);
     if (statSync(src).isFile()) {
       renameSync(src, join(outJobDir, f));

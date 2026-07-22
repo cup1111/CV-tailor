@@ -10,9 +10,8 @@ import { OpenAIService } from './services/openai.js';
 import { createApplicationPackModule } from './application-pack/index.js';
 import { UI_STRINGS, type Locale } from './i18n.js';
 import {
+  DEFAULT_APPLICATION_TRACK,
   TRACK_IDS,
-  getActiveTrackId,
-  setActiveTrackId,
   type TrackId,
 } from './services/track.js';
 
@@ -782,14 +781,6 @@ function buildHtml(lang: Locale): string {
         <nav class="top-nav">
             <a href="#" class="active" id="navWorkspace" onclick="switchTab('workspace'); return false;">{{navWorkspace}}</a>
             <a href="#" id="navArchive" onclick="switchTab('archive'); return false;">{{navArchive}}</a>
-            <span class="track-switcher">
-                <label for="activeTrackSelect">{{trackLabel}}</label>
-                <select id="activeTrackSelect" onchange="switchApplicationTrack(this.value)" title="{{trackSwitchHint}}">
-                    <option value="software-engineering">{{trackSoftwareEngineering}}</option>
-                    <option value="it-support">{{trackItSupport}}</option>
-                </select>
-                <span class="track-hint">{{trackSwitchHint}}</span>
-            </span>
             <span class="lang-switcher"><a href="?lang=en" class="{{langEnActive}}" style="text-decoration:none;color:inherit;">{{langSwitcherEn}}</a> | <a href="?lang=zh" class="{{langZhActive}}" style="text-decoration:none;color:inherit;">{{langSwitcherZh}}</a></span>
         </nav>
 
@@ -836,6 +827,16 @@ function buildHtml(lang: Locale): string {
                 </div>
             </div>
             <form id="jdForm">
+                <div class="form-group">
+                    <label for="applicationTrack">{{trackLabel}}</label>
+                    <select id="applicationTrack" name="applicationTrack">
+                        <option value="software-engineering" selected>{{trackSoftwareEngineering}}</option>
+                        <option value="it-support">{{trackItSupport}}</option>
+                    </select>
+                    <div class="field-help-row">
+                        <span>{{trackSelectHint}}</span>
+                    </div>
+                </div>
                 <div class="form-group">
                     <label for="companyInfo">{{companyInfoLabel}}</label>
                     <textarea id="companyInfo" name="companyInfo" placeholder="{{companyInfoPlaceholder}}"></textarea>
@@ -1108,39 +1109,7 @@ function buildHtml(lang: Locale): string {
             renderDailyStarBuddy();
             refreshMotivation();
             refreshList();
-            loadActiveTrack();
         });
-
-        async function loadActiveTrack() {
-            try {
-                const res = await fetch('/api/track');
-                const data = await res.json();
-                if (!res.ok) throw new Error(data.error || UI.requestFailed);
-                const sel = document.getElementById('activeTrackSelect');
-                if (sel && data.activeTrack) sel.value = data.activeTrack;
-            } catch (error) {
-                console.error('loadActiveTrack', error);
-            }
-        }
-
-        async function switchApplicationTrack(trackId) {
-            const sel = document.getElementById('activeTrackSelect');
-            try {
-                const res = await fetch('/api/track', {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ activeTrack: trackId }),
-                });
-                const data = await res.json();
-                if (!res.ok) throw new Error(data.error || UI.requestFailed);
-                showMessage('✓ ' + UI.trackSwitchOk, 'success');
-                refreshList();
-            } catch (error) {
-                showMessage('✗ ' + UI.trackSwitchFailed + error.message, 'error');
-                await loadActiveTrack();
-                if (sel) { /* restored from server */ }
-            }
-        }
 
         // 文件上传处理
         document.getElementById('fileUpload').addEventListener('change', async (e) => {
@@ -1161,6 +1130,7 @@ function buildHtml(lang: Locale): string {
             e.preventDefault();
             const jdText = document.getElementById('jd').value.trim();
             const companyText = (document.getElementById('companyInfo') && document.getElementById('companyInfo').value) ? document.getElementById('companyInfo').value.trim() : '';
+            const applicationTrack = document.getElementById('applicationTrack')?.value || 'software-engineering';
             if (!jdText) {
                 showMessage('✗ ' + UI.msgJdRequired, 'error');
                 return;
@@ -1169,7 +1139,7 @@ function buildHtml(lang: Locale): string {
                 const response = await fetch('/api/ingest', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ jd: jdText, companyInfo: companyText || undefined })
+                    body: JSON.stringify({ jd: jdText, companyInfo: companyText || undefined, applicationTrack })
                 });
                 
                 const result = await response.json();
@@ -1216,14 +1186,14 @@ function buildHtml(lang: Locale): string {
                     const modeClass = job.hasCompanyInfo ? 'has-company-profile' : 'jd-only';
                     const modeBadgeClass = job.hasCompanyInfo ? 'has-company' : 'jd-only';
                     const modeText = job.hasCompanyInfo ? UI.modeHasCompany : UI.modeJdOnly;
-                    const staleBadge = job.stale
-                        ? \` <span class="jd-mode-badge jd-only">\${UI.modeStalePack}</span>\`
-                        : '';
+                    const trackLabel = job.applicationTrack === 'it-support'
+                        ? UI.trackItSupport
+                        : UI.trackSoftwareEngineering;
                     return \`
                         <div class="jd-item \${modeClass}" data-job-id="\${job.id}">
                             <div class="jd-item-header">
                                 <div>
-                                    <div class="jd-item-title">\${title} <span class="jd-mode-badge \${modeBadgeClass}">\${modeText}</span>\${staleBadge}</div>
+                                    <div class="jd-item-title">\${title} <span class="jd-mode-badge \${modeBadgeClass}">\${modeText}</span> <span class="jd-mode-badge">\${trackLabel}</span></div>
                                     <div class="jd-item-id">ID: \${job.id}</div>
                                 </div>
                                 <div class="jd-item-actions">
@@ -1820,11 +1790,17 @@ app.get('/api/jobs', (req, res) => {
 // API: 添加 job（公司信息 + JD 两个独立输入）
 app.post('/api/ingest', (req, res) => {
   try {
-    const { jd, companyInfo } = req.body;
+    const { jd, companyInfo, applicationTrack } = req.body;
 
     if (!jd || !jd.trim()) {
       return res.status(400).json({ error: 'Job description (jd) is required' });
     }
+
+    const trackId =
+      typeof applicationTrack === 'string' &&
+      (TRACK_IDS as readonly string[]).includes(applicationTrack)
+        ? (applicationTrack as TrackId)
+        : DEFAULT_APPLICATION_TRACK;
 
     const jdText = jd.trim();
     const companyText =
@@ -1835,11 +1811,13 @@ app.post('/api/ingest', (req, res) => {
     pack.saveJobInputs(jobId, {
       jd: jdText,
       companyInfo: companyText,
+      applicationTrack: trackId,
     });
 
     res.json({
       success: true,
       jobId,
+      applicationTrack: trackId,
       message: `Job saved (JD + ${companyText ? 'company info' : 'no company info'})`,
     });
   } catch (error) {
@@ -2024,37 +2002,6 @@ app.post('/api/archive/:jobId/restore', (req, res) => {
     res.json({ success: true, jobId });
   } catch (error) {
     res.status(404).json({ error: error instanceof Error ? error.message : 'Unknown error' });
-  }
-});
-
-// API: active Application Track (track.yaml is source of truth)
-app.get('/api/track', (req, res) => {
-  try {
-    res.json({
-      activeTrack: getActiveTrackId(),
-      tracks: TRACK_IDS.map((id) => ({ id })),
-    });
-  } catch (error) {
-    res.status(500).json({ error: error instanceof Error ? error.message : 'Unknown error' });
-  }
-});
-
-app.put('/api/track', (req, res) => {
-  try {
-    const activeTrack = req.body?.activeTrack;
-    if (!activeTrack || !(TRACK_IDS as readonly string[]).includes(activeTrack)) {
-      return res.status(400).json({
-        error: `activeTrack must be one of: ${TRACK_IDS.join(', ')}`,
-      });
-    }
-    const id = setActiveTrackId(activeTrack as TrackId);
-    res.json({
-      success: true,
-      activeTrack: id,
-      templatesRoot: pack.templatesRoot,
-    });
-  } catch (error) {
-    res.status(500).json({ error: error instanceof Error ? error.message : 'Unknown error' });
   }
 });
 

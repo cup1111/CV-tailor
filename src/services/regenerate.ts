@@ -1,4 +1,3 @@
-import { join } from 'path';
 import type { OpenAIService } from './openai.js';
 import { PackStore } from '../application-pack/store.js';
 import {
@@ -6,7 +5,7 @@ import {
   RegenerateOutputSchema,
   type RegenerateOutput,
 } from '../application-pack/regenerate.js';
-import { getActiveTrackId, resolveActiveTrack } from './track.js';
+import { resolveTrackPaths } from './track.js';
 
 export { RegenerateOutputSchema, type RegenerateOutput };
 
@@ -20,14 +19,13 @@ export async function regenerateResumeContent(
 ): Promise<RegenerateOutput> {
   const workspaceRoot = process.cwd();
   const store = new PackStore(workspaceRoot);
-  const { templatesRoot } = resolveActiveTrack(workspaceRoot);
+  const trackId = store.loadJobInputs(jobId).applicationTrack;
+  const { templatesRoot } = resolveTrackPaths(workspaceRoot, trackId);
   return regeneratePackForJob({
     store,
     jobId,
     feedback,
     model: openai,
     templatesRoot,
-    workspaceRoot,
-    applicationTrackId: getActiveTrackId(workspaceRoot),
   });
 }

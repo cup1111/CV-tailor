@@ -47,7 +47,7 @@ A tool that generates job application materials from job descriptions (JDs): pai
    cp tracks/it-support/profile.example.yaml tracks/it-support/profile.yaml
    ```
 
-   Edit the Profile for the Track you will use. Set the active Track in `track.yaml` (`activeTrack: software-engineering` or `it-support`). Track Profiles are gitignored.
+   Edit the Profile for each Track you use. When adding a job in the UI (or via API), choose that job's Application Track; generation uses that Track's Profile and Prompt Templates (ADR-0003). Track Profiles are gitignored.
 
 ## Usage
 
@@ -62,7 +62,7 @@ Then open http://localhost:3000 in your browser.
 
 **In the UI:**
 
-- **Workspace:** Add jobs by pasting company info (optional) and job description (JD). You can upload a text file instead.
+- **Workspace:** Add jobs by choosing an Application Track, then pasting company info (optional) and job description (JD). You can upload a text file instead. The Track binding is fixed for that job.
 - **Generate:** Run “Generate” for a single job or “Generate all” for all incomplete jobs. Progress is shown per job.
 - **View results:** After generation, open “View results” to see company profile, pain points, mapping, experience bullets, summary, cover letter, and review. Copy buttons let you copy sections to the clipboard.
 - **Regenerate:** For completed jobs, use “Regenerate” to revise summary, experience bullets, and cover letter using editable feedback (e.g. from the review step). Regeneration runs in the background and re-runs the review step when done.
@@ -92,13 +92,12 @@ For each job, the pipeline runs:
 6. **Cover letter** — Tailored cover letter.
 7. **Review** — Quality check (PASS/FAIL and short explanation). If FAIL, one automatic regenerate run is triggered with the review as feedback.
 
-All outputs are under `out/{job_id}/` (e.g. `company-profile.raw.txt`, `pain-points.raw.txt`, `mapping.raw.txt`, `experience-bullets.raw.txt`, `summary.raw.txt`, `cover-letter.raw.txt`, `review.raw.txt`). Archive moves `jobs/{id}.md`, `jobs/{id}.company.txt`, and `out/{id}/*` into `archive/YYYY-MM-DD/{id}/`.
+All outputs are under `out/{job_id}/` (e.g. `company-profile.raw.txt`, `pain-points.raw.txt`, `mapping.raw.txt`, `experience-bullets.raw.txt`, `summary.raw.txt`, `cover-letter.raw.txt`, `review.raw.txt`). Archive moves `jobs/{id}.md`, `jobs/{id}.company.txt`, `jobs/{id}.track.txt`, and `out/{id}/*` into `archive/YYYY-MM-DD/{id}/`.
 
 ## Project structure
 
 ```
 job/
-  track.yaml             # active Application Track
   tracks/
     software-engineering/
       profile.example.yaml
@@ -112,22 +111,18 @@ job/
     server.ts
     commands/
     services/
-      track.ts           # resolve active Track / Profile / templates
+      track.ts           # Track ids, Profile load, Job Track migration
     application-pack/
   out/
-  jobs/
+  jobs/                  # {id}.md, optional {id}.company.txt, {id}.track.txt
   archive/
 ```
 
 ## Configuration
 
-### Application Track (`track.yaml`)
+### Application Track (per Job)
 
-```yaml
-activeTrack: software-engineering   # or it-support
-```
-
-Generation loads Profile + Prompt Templates from `tracks/{activeTrack}/`. Changing the active Track (via `track.yaml` or the UI switcher in the top nav) marks existing Application Packs as stale until regenerated (ADR-0002).
+Each Job is bound to one Application Track (`software-engineering` or `it-support`) when the Job Description is saved. That binding selects Profile + Prompt Templates for generation and cannot be changed afterward (ADR-0003). A legacy `track.yaml` is read only when migrating older Jobs that lack a binding.
 
 ### Profile (`tracks/{track}/profile.yaml`)
 
@@ -149,7 +144,7 @@ Create from that Track's `profile.example.yaml`. Include:
 
 ### Templates
 
-Prompt Templates live under `tracks/{track}/templates/` as English-only JSON files (`systemPrompt`, `userPrompt`, optional `temperature`, `maxTokens`). Variables use `{{name}}` and are filled at runtime. UI Locale (`?lang=`) does not select templates — see ADR-0001. Track selection is via `track.yaml` — see ADR-0002.
+Prompt Templates live under `tracks/{track}/templates/` as English-only JSON files (`systemPrompt`, `userPrompt`, optional `temperature`, `maxTokens`). Variables use `{{name}}` and are filled at runtime. UI Locale (`?lang=`) does not select templates — see ADR-0001. Track is chosen per Job — see ADR-0003.
 
 ## Development
 
@@ -169,8 +164,8 @@ MIT
 
 本工具根据职位描述（JD）自动生成求职材料：招聘痛点、经历要点、简历摘要、求职信和审查。提供网页界面添加职位、查看结果、重新生成与存档。
 
-**安装：** 克隆项目后执行 `pnpm install`，复制 `.env.example` 为 `.env` 并填写 `OPENAI_API_KEY`；复制对应 Track 下的 `profile.example.yaml` 为 `profile.yaml`，并在 `track.yaml` 中设置 `activeTrack`（`software-engineering` 或 `it-support`）。
+**安装：** 克隆项目后执行 `pnpm install`，复制 `.env.example` 为 `.env` 并填写 `OPENAI_API_KEY`；复制对应 Track 下的 `profile.example.yaml` 为 `profile.yaml`。
 
-**使用：** 运行 `pnpm run ingest` 启动服务，在浏览器打开 http://localhost:3000，在“工作区”添加 JD 后点击“生成”，在“查看结果”中查看并复制内容；可使用“重新生成”根据反馈修改摘要/经历/求职信，或使用“存档”将职位移至存档区。
+**使用：** 运行 `pnpm run ingest` 启动服务，在浏览器打开 http://localhost:3000，在“工作区”选择求职方向（Track）并添加 JD 后点击“生成”，在“查看结果”中查看并复制内容；可使用“重新生成”根据反馈修改摘要/经历/求职信，或使用“存档”将职位移至存档区。
 
 **流程：** 公司调研 → 痛点 → 映射 → 经历要点 → 摘要 → 求职信 → 审查；输出在 `out/{job_id}/`，存档在 `archive/YYYY-MM-DD/{id}/`。

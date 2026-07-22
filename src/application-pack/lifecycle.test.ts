@@ -147,6 +147,7 @@ describe('Application Pack lifecycle', () => {
     pack.saveJobInputs('j1', {
       companyInfo: 'Acme Corp',
       jd: 'We need a backend engineer for robotics APIs.',
+      applicationTrack: 'software-engineering',
     });
 
     const model = createSequencedModel({
@@ -184,7 +185,7 @@ describe('Application Pack lifecycle', () => {
       workspaceRoot: root,
       templatesRoot,
     });
-    pack.saveJobInputs('j2', { companyInfo: '', jd: 'JD only role' });
+    pack.saveJobInputs('j2', { companyInfo: '', jd: 'JD only role' , applicationTrack: 'software-engineering' });
 
     const model1 = createSequencedModel({
       withMeta: [
@@ -216,7 +217,7 @@ describe('Application Pack lifecycle', () => {
       workspaceRoot: root,
       templatesRoot,
     });
-    pack.saveJobInputs('j3', { companyInfo: '', jd: 'Some JD' });
+    pack.saveJobInputs('j3', { companyInfo: '', jd: 'Some JD' , applicationTrack: 'software-engineering' });
 
     let jsonCalls = 0;
     const model = createSequencedModel({
@@ -255,7 +256,7 @@ describe('Application Pack lifecycle', () => {
       workspaceRoot: root,
       templatesRoot,
     });
-    pack.saveJobInputs('j5', { companyInfo: '', jd: 'JD only' });
+    pack.saveJobInputs('j5', { companyInfo: '', jd: 'JD only' , applicationTrack: 'software-engineering' });
     pack.writeArtifacts('j5', {
       companyProfile: 'Should not surface',
       summary: 'S',
@@ -275,6 +276,7 @@ describe('Application Pack lifecycle', () => {
     pack.saveJobInputs('j4', {
       companyInfo: 'Acme',
       jd: 'Backend robotics',
+      applicationTrack: 'software-engineering',
     });
     pack.writeArtifacts('j4', {
       companyProfile: 'Generated Acme profile',
@@ -310,5 +312,36 @@ describe('Application Pack lifecycle', () => {
     expect(pack.loadJobInputs('j4').companyInfo).toBe('Acme');
     expect(pack.listJobs().find((j) => j.id === 'j4')?.progress).toBeUndefined();
     expect(textPhase).toBe(1);
+  });
+
+  it('generatePack resolves templates from the Job bound Application Track', async () => {
+    const { cpSync, mkdirSync } = await import('fs');
+    const itTemplates = join(root, 'tracks/it-support/templates');
+    mkdirSync(itTemplates, { recursive: true });
+    cpSync(templatesRoot, itTemplates, { recursive: true });
+
+    const pack = createApplicationPackModule({ workspaceRoot: root });
+    pack.saveJobInputs('track-job', {
+      companyInfo: '',
+      jd: 'Helpdesk analyst role',
+      applicationTrack: 'it-support',
+    });
+
+    expect(pack.templatesRootForJob('track-job')).toBe(itTemplates);
+
+    const model = createSequencedModel({
+      withMeta: ['c', 'p', 'm'],
+      text: [
+        '||\nPastCo - Engineer\n- B\n||',
+        'Summary',
+        'Cover',
+        'PASS',
+      ],
+    });
+    await pack.generatePack('track-job', { profile: sampleProfile, model });
+    expect(pack.readPack('track-job').summary).toBe('Summary');
+    expect(existsSync(join(root, 'out', 'track-job', 'application-track.txt'))).toBe(
+      false
+    );
   });
 });

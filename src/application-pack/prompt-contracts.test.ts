@@ -101,7 +101,11 @@ describe('Prompt Template contracts', () => {
 
   it('runPromptStep writes artifacts and truncation via the contract', async () => {
     const store = new PackStore(root);
-    store.saveJobInputs('j1', { companyInfo: '', jd: 'JD' });
+    store.saveJobInputs('j1', {
+      companyInfo: '',
+      jd: 'JD',
+      applicationTrack: 'software-engineering',
+    });
 
     const model: ModelPort = {
       webSearch: async () => '',
@@ -142,7 +146,11 @@ describe('Prompt Template contracts', () => {
 
   it('runPromptStep parses experience-bullets into extracted artifact', async () => {
     const store = new PackStore(root);
-    store.saveJobInputs('j2', { companyInfo: '', jd: 'JD' });
+    store.saveJobInputs('j2', {
+      companyInfo: '',
+      jd: 'JD',
+      applicationTrack: 'software-engineering',
+    });
     const model: ModelPort = {
       webSearch: async () => '',
       generateTextWithMeta: async () => ({ text: '', finishReason: 'stop' }),
@@ -172,7 +180,11 @@ describe('Prompt Template contracts', () => {
 
   it('runJsonPromptStep writes regenerate raw via the contract', async () => {
     const store = new PackStore(root);
-    store.saveJobInputs('j3', { companyInfo: '', jd: 'JD' });
+    store.saveJobInputs('j3', {
+      companyInfo: '',
+      jd: 'JD',
+      applicationTrack: 'software-engineering',
+    });
     const schema = z.object({
       summary: z.string(),
       experiences: z.array(

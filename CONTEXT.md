@@ -17,8 +17,8 @@ A factual resume bullet for one past role, produced for a specific job applicati
 _Avoid_: generic achievement line, buzzword filler, retitled past role
 
 **Application Pack**:
-The set of materials generated for one job application: at minimum experience bullets, CV summary, and cover letter (plus upstream research/mapping/review that feed them). An Application Pack becomes stale if the workspace active Application Track changes after it was generated.
-_Avoid_: resume pack (ambiguous), full CV file
+The set of materials generated for one job application: at minimum experience bullets, CV summary, and cover letter (plus upstream research/mapping/review that feed them). An Application Pack is generated under the Job's bound Application Track.
+_Avoid_: resume pack (ambiguous), full CV file, stale pack (relative to a workspace active Track)
 
 **Profile**:
 The candidate's source facts for one Application Track: personal details, experiences, education, skills, and optional extras. Each Track owns a complete Profile; generation never mixes Profiles across Tracks.
@@ -32,10 +32,14 @@ _Avoid_: company profile (that is the generated artifact), company.txt contents 
 The generated company research artifact for one Application Pack (from Web Search + Prompt Template). Empty when Company Info was not provided.
 _Avoid_: company info, user search keywords
 
+**Job**:
+One application target in the workspace: a Job Description, optional Company Info, and an immutable binding to exactly one Application Track. The binding is the sole authority for which Profile and Prompt Templates generation uses; Application Pack outputs do not carry a separate Track record.
+_Avoid_: JD (the text alone), posting, listing, pack-side Track marker as authority
+
 **Job View**:
-The read-only workspace snapshot for one job (title, Company Info flag, generation status, in-flight progress, whether the Application Pack is complete, and whether that pack is stale relative to the active Application Track). Adapters list jobs through this view instead of reading status or progress files directly.
-_Avoid_: status.json, .progress, hasCompanyProfile (use hasCompanyInfo)
+The read-only workspace snapshot for one job (title, Company Info flag, generation status, in-flight progress, whether the Application Pack is complete, and which Application Track the Job is bound to). Adapters list jobs through this view instead of reading status or progress files directly.
+_Avoid_: status.json, .progress, hasCompanyProfile (use hasCompanyInfo), stale (workspace Track switch)
 
 **Application Track**:
-A career-direction bundle: one Profile plus one set of Prompt Templates used to generate Application Packs for that direction. This project has two Tracks: `software-engineering` and `it-support`. Multiple Tracks coexist without overwriting each other; the workspace has one active Track at a time (default `software-engineering`), and all generation uses that Track.
-_Avoid_: career target, profile variant, job type, persona, LANG-based template switch, default (as a Track id)
+A career-direction bundle: one Profile plus one set of Prompt Templates used to generate Application Packs for that direction. This project has two Tracks: `software-engineering` and `it-support`. Multiple Tracks coexist without overwriting each other. Each Job is bound to exactly one Application Track when the Job Description is entered; that binding does not change afterward. Generation for that Job uses its bound Track. There is no workspace-level active Track.
+_Avoid_: career target, profile variant, job type, 分类, persona, LANG-based template switch, default (as a Track id), workspace active Track, track.yaml activeTrack

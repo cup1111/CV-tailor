@@ -1,5 +1,4 @@
 import { z } from 'zod';
-import { writePackTrackId, type TrackId } from '../services/track.js';
 import type { PackStore } from './store.js';
 import type { ModelPort } from './types.js';
 import { runReview } from './lifecycle.js';
@@ -38,24 +37,13 @@ export async function regeneratePackForJob(args: {
   feedback: string;
   model: ModelPort;
   templatesRoot: string;
-  workspaceRoot: string;
-  applicationTrackId: TrackId;
 }): Promise<RegenerateOutput> {
-  const {
-    store,
-    jobId,
-    feedback,
-    model,
-    templatesRoot,
-    workspaceRoot,
-    applicationTrackId,
-  } = args;
+  const { store, jobId, feedback, model, templatesRoot } = args;
   const pack = store.readPack(jobId);
   if (!pack.exists) {
     throw new Error(`No output directory for job: ${jobId}`);
   }
   store.ensureOutDir(jobId);
-  writePackTrackId(workspaceRoot, jobId, applicationTrackId);
 
   const inputs = store.loadJobInputs(jobId);
   const companyProfile = pack.companyProfile ?? '';
