@@ -1,4 +1,4 @@
-import { loadActiveProfile } from '../services/track.js';
+import { loadProfileForTrack } from '../services/track.js';
 import pLimit from 'p-limit';
 import { OpenAIService } from '../services/openai.js';
 import type { Profile } from '../types/profile.js';
@@ -19,6 +19,7 @@ function createModel(): OpenAIService {
 
 /**
  * Generate command — thin CLI adapter over the Application Pack module.
+ * Each Job uses its own Application Track binding (Profile + templates).
  */
 export async function generateCommand(options: {
   job?: string;
@@ -28,7 +29,6 @@ export async function generateCommand(options: {
 }) {
   const openai = createModel();
   const pack = options.pack ?? createApplicationPackModule();
-  const profile = options.profile ?? loadActiveProfile(pack.workspaceRoot);
 
   let jobIds: string[];
   if (options.job) {
@@ -53,13 +53,17 @@ export async function generateCommand(options: {
   const limit = pLimit(concurrency);
 
   console.log(
-    `🚀 Starting generation for ${jobIds.length} job(s) with concurrency ${concurrency} (track: ${pack.applicationTrackId})`
+    `🚀 Starting generation for ${jobIds.length} job(s) with concurrency ${concurrency}`
   );
 
   await Promise.all(
     jobIds.map((jobId) =>
       limit(async () => {
-        console.log(`\n🔄 Processing job: ${jobId}`);
+        const track = pack.loadJobInputs(jobId).applicationTrack;
+        console.log(`\n🔄 Processing job: ${jobId} (track: ${track})`);
+        const profile =
+          options.profile ??
+          loadProfileForTrack(pack.workspaceRoot, track);
         const { reviewFailed } = await pack.generatePack(jobId, {
           profile,
           model: openai,

@@ -6,6 +6,9 @@ dist/
 out/
 jobs/*.md
 archive/
+submission-ledger.json
 jobs/
 profile.yaml
 tracks/*/profile.yaml
+# Legacy workspace activeTrack — migration-only if present locally (ADR-0003)
+track.yaml

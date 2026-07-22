@@ -3,16 +3,22 @@ import { generateCommand } from './commands/generate.js';
 import {
   listArchive,
   archiveAllJobs,
+  archiveJob,
   restoreJob,
   getArchiveJobDetail,
 } from './services/archive.js';
+import { getSubmissionStats } from './services/submission-ledger.js';
 import { OpenAIService } from './services/openai.js';
-import { createApplicationPackModule } from './application-pack/index.js';
+import {
+  createApplicationPackModule,
+  JobEditBlockedError,
+  JobNotFoundError,
+} from './application-pack/index.js';
+import { PACK_GENERATION_STEPS } from './application-pack/batch-progress.js';
 import { UI_STRINGS, type Locale } from './i18n.js';
+import { getDailyThemeName, renderDailyThemeCss } from './ui/daily-theme.js';
 import {
   TRACK_IDS,
-  getActiveTrackId,
-  setActiveTrackId,
   type TrackId,
 } from './services/track.js';
 
@@ -28,6 +34,8 @@ app.use(express.raw({ type: 'text/plain', limit: '10mb' }));
 function buildHtml(lang: Locale): string {
   const s = UI_STRINGS[lang];
   const langAttr = lang === 'zh' ? 'zh-CN' : 'en';
+  const dailyThemeCss = renderDailyThemeCss(new Date());
+  const dailyThemeName = getDailyThemeName(lang, new Date());
   const html = `
 <!DOCTYPE html>
 <html lang="${langAttr}">
@@ -36,6 +44,7 @@ function buildHtml(lang: Locale): string {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{pageTitle}}</title>
     <style>
+        ${dailyThemeCss}
         * {
             margin: 0;
             padding: 0;
@@ -43,64 +52,93 @@ function buildHtml(lang: Locale): string {
         }
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background-color: #f5f5f5;
+            background-color: var(--theme-page-bg);
+            background-image: linear-gradient(
+                165deg,
+                var(--theme-page-bg) 0%,
+                var(--theme-page-bg-end) 52%,
+                var(--theme-page-bg-accent) 100%
+            );
+            background-attachment: fixed;
+            min-height: 100vh;
             padding: 20px;
+            transition: background-color 0.4s ease, background-image 0.4s ease;
         }
         .container {
             max-width: 1200px;
             margin: 0 auto;
         }
         .header {
-            background: white;
+            background: var(--theme-surface);
             padding: 30px;
             border-radius: 8px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
             margin-bottom: 20px;
         }
         h1 {
-            color: #333;
+            color: var(--theme-text-primary);
             margin-bottom: 10px;
         }
         .section {
-            background: white;
+            background: var(--theme-surface);
             padding: 30px;
             border-radius: 8px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
             margin-bottom: 20px;
         }
         .section h2 {
-            color: #333;
+            color: var(--theme-text-primary);
             margin-bottom: 20px;
             font-size: 20px;
+        }
+        .daily-theme-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 10px;
+            padding: 6px 10px;
+            border-radius: 999px;
+            font-size: 12px;
+            color: var(--theme-text-muted);
+            background: var(--theme-surface-subtle);
+            border: 1px solid var(--theme-border);
+        }
+        .daily-theme-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--theme-primary);
+            box-shadow: 0 0 0 2px var(--theme-primary-light);
+            flex-shrink: 0;
         }
         .quick-start {
             margin-bottom: 20px;
             padding: 14px 16px;
-            border: 1px solid #dbeafe;
+            border: 1px solid var(--theme-panel-border);
             border-radius: 8px;
-            background: #f8fbff;
+            background: var(--theme-panel-bg);
         }
         .quick-start h3 {
-            color: #1f4b99;
+            color: var(--theme-panel-title);
             font-size: 15px;
             margin-bottom: 8px;
         }
         .quick-start ol {
             margin-left: 20px;
-            color: #334155;
+            color: var(--theme-text-secondary);
             line-height: 1.6;
             font-size: 14px;
         }
         .sequence {
             margin: 0 0 20px;
             padding: 16px;
-            border: 1px solid #e2e8f0;
+            border: 1px solid var(--theme-border);
             border-radius: 10px;
-            background: #ffffff;
+            background: var(--theme-surface);
         }
         .sequence h3 {
             margin-bottom: 14px;
-            color: #1e293b;
+            color: var(--theme-text-heading);
             font-size: 16px;
         }
         .sequence-grid {
@@ -114,14 +152,14 @@ function buildHtml(lang: Locale): string {
             align-items: flex-start;
             padding: 12px;
             border-radius: 8px;
-            background: #f8fafc;
-            border: 1px solid #e2e8f0;
+            background: var(--theme-surface-subtle);
+            border: 1px solid var(--theme-border);
         }
         .sequence-index {
             width: 26px;
             height: 26px;
             border-radius: 50%;
-            background: #2563eb;
+            background: var(--theme-primary);
             color: #fff;
             display: inline-flex;
             align-items: center;
@@ -133,62 +171,168 @@ function buildHtml(lang: Locale): string {
         .sequence-item h4 {
             font-size: 14px;
             margin-bottom: 4px;
-            color: #1e293b;
+            color: var(--theme-text-heading);
         }
         .sequence-item p {
             font-size: 13px;
-            color: #475569;
+            color: var(--theme-text-subtle);
             line-height: 1.5;
         }
         .motivation-card {
             margin-bottom: 20px;
             padding: 16px;
             border-radius: 10px;
-            border: 1px solid #fde68a;
-            background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
+            border: 1px solid var(--theme-warm-border);
+            background: linear-gradient(135deg, var(--theme-warm-bg-from) 0%, var(--theme-warm-bg-to) 100%);
         }
         .apply-counter {
             margin-bottom: 20px;
             padding: 14px 16px;
             border-radius: 10px;
-            border: 1px solid #bae6fd;
-            background: linear-gradient(135deg, #f0f9ff 0%, #ecfeff 100%);
+            border: 1px solid var(--theme-stats-border);
+            background: linear-gradient(135deg, var(--theme-stats-bg-from) 0%, var(--theme-stats-bg-to) 100%);
         }
         .apply-counter-title {
             font-size: 15px;
             font-weight: 700;
-            color: #0c4a6e;
+            color: var(--theme-stats-title);
             margin-bottom: 4px;
         }
         .apply-counter-desc {
             font-size: 13px;
-            color: #0369a1;
+            color: var(--theme-stats-text);
             margin-bottom: 8px;
         }
         .apply-counter-value {
             font-size: 30px;
             font-weight: 800;
-            color: #075985;
+            color: var(--theme-stats-value);
             line-height: 1.1;
         }
         .apply-counter-value span {
             font-size: 14px;
             font-weight: 600;
             margin-left: 6px;
-            color: #0284c7;
+            color: var(--theme-stats-accent);
         }
         .apply-streak {
             margin-top: 8px;
             font-size: 14px;
             font-weight: 600;
-            color: #0369a1;
+            color: var(--theme-stats-text);
+        }
+        .submission-heatmap {
+            margin-top: 14px;
+            padding-top: 12px;
+            border-top: 1px solid var(--theme-stats-border);
+            position: relative;
+        }
+        .heatmap-title {
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--theme-stats-title);
+            margin-bottom: 10px;
+        }
+        .heatmap-scroll {
+            overflow-x: auto;
+            padding-bottom: 4px;
+        }
+        .heatmap-chart {
+            display: inline-block;
+            min-width: 100%;
+        }
+        .heatmap-months {
+            position: relative;
+            height: 16px;
+            margin-left: 28px;
+            margin-bottom: 4px;
+            font-size: 11px;
+            color: var(--theme-text-muted);
+            white-space: nowrap;
+        }
+        .heatmap-month {
+            position: absolute;
+            top: 0;
+            transform: translateX(0);
+            line-height: 16px;
+        }
+        .heatmap-body {
+            display: flex;
+            align-items: flex-start;
+            gap: 6px;
+        }
+        .heatmap-weekdays {
+            display: grid;
+            grid-template-rows: repeat(7, 11px);
+            gap: 3px;
+            font-size: 10px;
+            color: var(--theme-text-muted);
+            line-height: 11px;
+            text-align: right;
+            width: 22px;
+            flex-shrink: 0;
+        }
+        .heatmap-weekdays span {
+            height: 11px;
+        }
+        .heatmap-grid {
+            display: grid;
+            grid-auto-flow: column;
+            grid-template-rows: repeat(7, 11px);
+            grid-auto-columns: 11px;
+            gap: 3px;
+            width: max-content;
+        }
+        .heatmap-cell {
+            width: 11px;
+            height: 11px;
+            border-radius: 2px;
+            background: var(--theme-heatmap-empty);
+            cursor: pointer;
+        }
+        .heatmap-cell.level-1 { background: var(--theme-heatmap-1); }
+        .heatmap-cell.level-2 { background: var(--theme-heatmap-2); }
+        .heatmap-cell.level-3 { background: var(--theme-heatmap-3); }
+        .heatmap-cell.level-4 { background: var(--theme-heatmap-4); }
+        .heatmap-cell.level-5 { background: var(--theme-heatmap-5); }
+        .heatmap-cell.level-6 { background: var(--theme-heatmap-6); }
+        .heatmap-cell.level-7 { background: var(--theme-heatmap-7); }
+        .heatmap-tooltip {
+            position: fixed;
+            z-index: 1000;
+            pointer-events: none;
+            background: var(--theme-tooltip-bg);
+            color: #fff;
+            font-size: 12px;
+            line-height: 1.35;
+            padding: 6px 8px;
+            border-radius: 6px;
+            box-shadow: 0 4px 12px rgba(15, 23, 42, 0.25);
+            white-space: nowrap;
+            transform: translate(-50%, calc(-100% - 8px));
+        }
+        .heatmap-tooltip[hidden] {
+            display: none !important;
+        }
+        .heatmap-legend {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            margin-top: 8px;
+            font-size: 11px;
+            color: var(--theme-text-muted);
+        }
+        .heatmap-legend .heatmap-cell {
+            width: 10px;
+            height: 10px;
+            cursor: default;
         }
         .star-buddy {
             margin-bottom: 20px;
             padding: 16px;
             border-radius: 12px;
-            border: 1px solid #fbcfe8;
-            background: linear-gradient(145deg, #fff7ed 0%, #fdf2f8 45%, #eef2ff 100%);
+            border: 1px solid var(--theme-star-border);
+            background: linear-gradient(145deg, var(--theme-star-bg-1) 0%, var(--theme-star-bg-2) 45%, var(--theme-star-bg-3) 100%);
             position: relative;
             overflow: hidden;
         }
@@ -214,12 +358,12 @@ function buildHtml(lang: Locale): string {
         .star-buddy-title {
             font-size: 16px;
             font-weight: 700;
-            color: #7c2d12;
+            color: var(--theme-star-title);
             margin-bottom: 4px;
         }
         .star-buddy-subtitle {
             font-size: 13px;
-            color: #9a3412;
+            color: var(--theme-star-subtitle);
             margin-bottom: 10px;
         }
         .star-buddy-main {
@@ -241,7 +385,7 @@ function buildHtml(lang: Locale): string {
             flex-shrink: 0;
         }
         .star-detail {
-            color: #6b21a8;
+            color: var(--theme-star-detail);
             font-size: 14px;
             line-height: 1.55;
             font-weight: 600;
@@ -249,17 +393,17 @@ function buildHtml(lang: Locale): string {
         .motivation-title {
             font-size: 16px;
             font-weight: 600;
-            color: #92400e;
+            color: var(--theme-warm-title);
             margin-bottom: 6px;
         }
         .motivation-subtitle {
             font-size: 13px;
-            color: #a16207;
+            color: var(--theme-warm-subtitle);
             margin-bottom: 10px;
         }
         .motivation-quote {
             font-size: 14px;
-            color: #78350f;
+            color: var(--theme-warm-quote);
             margin-bottom: 12px;
             line-height: 1.6;
             font-weight: 500;
@@ -274,25 +418,24 @@ function buildHtml(lang: Locale): string {
             margin-top: 6px;
             gap: 8px;
             font-size: 12px;
-            color: #64748b;
+            color: var(--theme-text-muted);
         }
         .char-counter {
-            color: #475569;
+            color: var(--theme-text-subtle);
             white-space: nowrap;
         }
         label {
             display: block;
             margin-bottom: 5px;
             font-weight: 500;
-            color: #555;
+            color: var(--theme-text-label);
         }
         input[type="text"],
         input[type="url"],
-        textarea,
-        input[type="file"] {
+        textarea {
             width: 100%;
             padding: 10px;
-            border: 1px solid #ddd;
+            border: 1px solid var(--theme-border-light);
             border-radius: 4px;
             font-size: 14px;
             font-family: inherit;
@@ -301,8 +444,46 @@ function buildHtml(lang: Locale): string {
             min-height: 200px;
             resize: vertical;
         }
+        .track-buttons {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+        .track-btn {
+            background: var(--theme-surface-subtle);
+            color: var(--theme-text-secondary);
+            border: 2px solid var(--theme-border);
+            border-radius: 10px;
+            padding: 18px 16px;
+            margin: 0;
+            font-size: 15px;
+            font-weight: 600;
+            text-align: center;
+            transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease, color 0.15s ease;
+        }
+        .track-btn:hover {
+            background: var(--theme-surface-muted);
+            border-color: var(--theme-border-muted);
+            color: var(--theme-text-heading);
+        }
+        .track-btn.selected {
+            background: var(--theme-primary-light);
+            border-color: var(--theme-primary);
+            color: var(--theme-primary-dark);
+            box-shadow: 0 0 0 3px var(--theme-primary-ring);
+        }
+        .track-btn .track-btn-sub {
+            display: block;
+            margin-top: 6px;
+            font-size: 12px;
+            font-weight: 400;
+            color: var(--theme-text-muted);
+        }
+        .track-btn.selected .track-btn-sub {
+            color: var(--theme-primary-muted);
+        }
         button {
-            background-color: #007bff;
+            background-color: var(--theme-primary);
             color: white;
             padding: 12px 24px;
             border: none;
@@ -311,9 +492,10 @@ function buildHtml(lang: Locale): string {
             cursor: pointer;
             margin-right: 10px;
             margin-bottom: 10px;
+            transition: background-color 0.15s ease;
         }
         button:hover {
-            background-color: #0056b3;
+            background-color: var(--theme-primary-hover);
         }
         button.danger {
             background-color: #dc3545;
@@ -332,11 +514,11 @@ function buildHtml(lang: Locale): string {
             cursor: not-allowed;
         }
         button.secondary {
-            background: #eef2f7;
-            color: #334155;
+            background: var(--theme-btn-secondary-bg);
+            color: var(--theme-text-secondary);
         }
         button.secondary:hover {
-            background: #dde5ef;
+            background: var(--theme-btn-secondary-hover);
         }
         .message {
             padding: 15px;
@@ -352,39 +534,40 @@ function buildHtml(lang: Locale): string {
             color: #721c24;
         }
         .info {
-            background-color: #d1ecf1;
-            color: #0c5460;
+            background-color: var(--theme-info-bg);
+            color: var(--theme-info-text);
         }
         .jd-list {
             display: grid;
             gap: 15px;
         }
         .empty-state {
-            border: 1px dashed #cbd5e1;
+            border: 1px dashed var(--theme-border-muted);
             border-radius: 8px;
-            background: #f8fafc;
+            background: var(--theme-surface-subtle);
             padding: 24px;
             text-align: center;
-            color: #475569;
+            color: var(--theme-text-subtle);
         }
         .empty-state h3 {
-            color: #1e293b;
+            color: var(--theme-text-heading);
             margin-bottom: 8px;
             font-size: 18px;
         }
         .jd-item {
-            border: 1px solid #ddd;
+            border: 1px solid var(--theme-border-light);
             border-radius: 4px;
             padding: 15px;
-            background: #f9f9f9;
+            background: var(--theme-surface-subtle);
+            transition: border-color 0.25s ease, box-shadow 0.25s ease;
         }
         .jd-item.has-company-profile {
             border-left: 4px solid #28a745;
-            background: #f0f9f4;
+            background: var(--theme-surface-muted);
         }
         .jd-item.jd-only {
             border-left: 4px solid #6c757d;
-            background: #f8f9fa;
+            background: var(--theme-surface-subtle);
         }
         .jd-mode-badge {
             font-size: 11px;
@@ -429,11 +612,11 @@ function buildHtml(lang: Locale): string {
         }
         .jd-item-title {
             font-weight: 600;
-            color: #333;
+            color: var(--theme-text-primary);
         }
         .jd-item-id {
             font-size: 12px;
-            color: #666;
+            color: var(--theme-text-muted-alt);
             font-family: monospace;
         }
         .jd-item-actions {
@@ -443,8 +626,8 @@ function buildHtml(lang: Locale): string {
         .jd-item-content {
             margin-top: 10px;
             padding: 10px;
-            background: #fff;
-            border: 1px solid #ddd;
+            background: var(--theme-surface);
+            border: 1px solid var(--theme-border-light);
             border-radius: 4px;
             white-space: pre-wrap;
             word-wrap: break-word;
@@ -461,18 +644,18 @@ function buildHtml(lang: Locale): string {
         }
         .regenerate-progress .regenerate-label {
             font-size: 12px;
-            color: #666;
+            color: var(--theme-text-muted-alt);
             margin-bottom: 4px;
         }
         .regenerate-progress .regenerate-bar {
             height: 6px;
-            background: #e9ecef;
+            background: var(--theme-border);
             border-radius: 3px;
             overflow: hidden;
         }
         .regenerate-progress .regenerate-bar-fill {
             height: 100%;
-            background: #007bff;
+            background: var(--theme-primary);
             border-radius: 3px;
             transition: width 0.2s ease;
         }
@@ -490,13 +673,14 @@ function buildHtml(lang: Locale): string {
             font-size: 12px;
             font-weight: 500;
             margin-left: 10px;
+            transition: background-color 0.25s ease, color 0.25s ease;
         }
         .status-pending {
             background-color: #ffc107;
             color: #856404;
         }
         .status-in-progress {
-            background-color: #17a2b8;
+            background-color: var(--theme-status-progress);
             color: #fff;
         }
         .status-completed {
@@ -504,8 +688,8 @@ function buildHtml(lang: Locale): string {
             color: #fff;
         }
         .status-finished {
-            background-color: #b3d9ff;
-            color: #004085;
+            background-color: var(--theme-status-finished-bg);
+            color: var(--theme-status-finished-text);
         }
         .status-failed {
             background-color: #dc3545;
@@ -515,9 +699,9 @@ function buildHtml(lang: Locale): string {
             display: none;
             margin-top: 15px;
             padding: 15px;
-            background: white;
+            background: var(--theme-surface);
             border-radius: 4px;
-            border: 1px solid #ddd;
+            border: 1px solid var(--theme-border-light);
         }
         .results-panel.active {
             display: block;
@@ -526,7 +710,7 @@ function buildHtml(lang: Locale): string {
             margin-bottom: 20px;
         }
         .result-section h4 {
-            color: #333;
+            color: var(--theme-text-primary);
             margin-bottom: 10px;
             font-size: 16px;
         }
@@ -534,7 +718,7 @@ function buildHtml(lang: Locale): string {
         .result-section.result-subsection h4 { font-size: 14px; }
         .result-content-wrap {
             position: relative;
-            background: #f9f9f9;
+            background: var(--theme-surface-subtle);
             border-radius: 4px;
             padding: 15px;
         }
@@ -544,8 +728,8 @@ function buildHtml(lang: Locale): string {
             right: 8px;
             padding: 4px 10px;
             font-size: 12px;
-            border: 1px solid #ddd;
-            background: #fff;
+            border: 1px solid var(--theme-border-light);
+            background: var(--theme-surface);
             border-radius: 4px;
             cursor: pointer;
             opacity: 0.85;
@@ -553,10 +737,10 @@ function buildHtml(lang: Locale): string {
         }
         .result-content-wrap .copy-btn:hover {
             opacity: 1;
-            background: #f0f0f0;
+            background: var(--theme-surface-muted);
         }
         .result-content {
-            background: #f9f9f9;
+            background: var(--theme-surface-subtle);
             padding: 15px;
             border-radius: 4px;
             white-space: pre-wrap;
@@ -587,7 +771,7 @@ function buildHtml(lang: Locale): string {
             z-index: 1000;
         }
         .modal-overlay .modal {
-            background: #fff;
+            background: var(--theme-surface);
             border-radius: 8px;
             max-width: 640px;
             width: 90%;
@@ -616,11 +800,115 @@ function buildHtml(lang: Locale): string {
             display: inline-block;
             width: 16px;
             height: 16px;
-            border: 2px solid #f3f3f3;
-            border-top: 2px solid #007bff;
+            border: 2px solid var(--theme-border);
+            border-top: 2px solid var(--theme-primary);
             border-radius: 50%;
             animation: spin 1s linear infinite;
             margin-left: 10px;
+            vertical-align: middle;
+        }
+        .loading.loading-inline {
+            width: 14px;
+            height: 14px;
+            margin-left: 6px;
+            border-width: 2px;
+        }
+        .batch-status {
+            display: none;
+            margin-top: 12px;
+            padding: 14px 16px;
+            border: 1px solid var(--theme-panel-border);
+            border-radius: 8px;
+            background: var(--theme-panel-bg);
+        }
+        .batch-status.visible {
+            display: block;
+        }
+        .batch-status-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 10px;
+        }
+        .batch-status-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--theme-batch-title);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .batch-status-clear {
+            border: none;
+            background: transparent;
+            color: var(--theme-text-muted);
+            cursor: pointer;
+            font-size: 13px;
+            padding: 4px 8px;
+            border-radius: 4px;
+        }
+        .batch-status-clear:hover {
+            background: var(--theme-border);
+            color: var(--theme-text-secondary);
+        }
+        .batch-status-clear:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+        .batch-status-primary {
+            font-size: 13px;
+            color: var(--theme-text-secondary);
+            margin-bottom: 6px;
+        }
+        .batch-status-secondary {
+            font-size: 12px;
+            color: var(--theme-text-muted);
+            margin-top: 6px;
+        }
+        .batch-progress-bar {
+            height: 8px;
+            background: var(--theme-border);
+            border-radius: 999px;
+            overflow: hidden;
+        }
+        .batch-progress-bar-fill {
+            height: 100%;
+            width: 0%;
+            background: var(--theme-primary-muted);
+            border-radius: 999px;
+            transition: width 0.35s ease;
+        }
+        .batch-status.done .batch-progress-bar-fill {
+            background: #22c55e;
+        }
+        .batch-status.has-failures.done .batch-progress-bar-fill {
+            background: #f59e0b;
+        }
+        .pack-step-progress {
+            margin: 8px 0 4px;
+        }
+        .pack-step-progress .regenerate-label {
+            font-size: 12px;
+            color: var(--theme-text-muted);
+            margin-bottom: 4px;
+        }
+        .jd-item.is-generating {
+            border-color: var(--theme-generating-border);
+            box-shadow: 0 0 0 1px var(--theme-generating-shadow);
+        }
+        .jd-item.is-failed {
+            border-color: #fca5a5;
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .loading,
+            .batch-progress-bar-fill,
+            .status-badge,
+            .jd-item,
+            .regenerate-progress .regenerate-bar-fill {
+                animation: none !important;
+                transition: none !important;
+            }
         }
         @keyframes spin {
             0% { transform: rotate(0deg); }
@@ -665,53 +953,23 @@ function buildHtml(lang: Locale): string {
             display: flex;
             gap: 0;
             margin-bottom: 20px;
-            border-bottom: 2px solid #dee2e6;
+            border-bottom: 2px solid var(--theme-nav-border);
         }
         .top-nav a {
             padding: 12px 24px;
             text-decoration: none;
-            color: #495057;
+            color: var(--theme-nav-text);
             font-weight: 500;
         }
-        .top-nav a:hover { color: #007bff; }
+        .top-nav a:hover { color: var(--theme-primary); }
         .top-nav a.active {
-            color: #007bff;
-            border-bottom: 2px solid #007bff;
+            color: var(--theme-primary);
+            border-bottom: 2px solid var(--theme-primary);
             margin-bottom: -2px;
-        }
-        .track-switcher {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            margin-left: auto;
-            padding: 8px 0;
-            font-size: 14px;
-            color: #555;
-        }
-        .track-switcher label {
-            font-weight: 600;
-            white-space: nowrap;
-        }
-        .track-switcher select {
-            padding: 6px 10px;
-            border: 1px solid #ccc;
-            border-radius: 4px;
-            background: #fff;
-            font-size: 14px;
-            max-width: 220px;
-        }
-        .track-switcher .track-hint {
-            display: none;
-            font-size: 12px;
-            color: #888;
-            max-width: 280px;
-        }
-        @media (min-width: 900px) {
-            .track-switcher .track-hint { display: inline; }
         }
         .lang-switcher {
             padding: 12px 0;
-            margin-left: 16px;
+            margin-left: auto;
             white-space: nowrap;
         }
         .view-panel { display: none; }
@@ -748,48 +1006,41 @@ function buildHtml(lang: Locale): string {
         .archive-group-date {
             font-size: 18px;
             font-weight: 600;
-            color: #333;
+            color: var(--theme-text-primary);
             margin-bottom: 12px;
             padding-bottom: 6px;
-            border-bottom: 1px solid #eee;
+            border-bottom: 1px solid var(--theme-border-light);
         }
         .archive-job-item {
             display: flex;
             align-items: center;
             justify-content: space-between;
             padding: 12px 16px;
-            background: #fff;
-            border: 1px solid #ddd;
+            background: var(--theme-surface);
+            border: 1px solid var(--theme-border-light);
             border-radius: 4px;
             margin-bottom: 8px;
         }
-        .archive-job-item:hover { background: #f8f9fa; }
+        .archive-job-item:hover { background: var(--theme-surface-subtle); }
         .archive-job-expand {
             margin-top: 12px;
             padding: 12px;
-            background: #f8f9fa;
+            background: var(--theme-surface-subtle);
             border-radius: 4px;
             font-size: 13px;
         }
-        .archive-job-expand h5 { margin: 12px 0 6px; color: #555; }
+        .archive-job-expand h5 { margin: 12px 0 6px; color: var(--theme-text-label); }
+        .text-muted { color: var(--theme-text-muted-alt); }
         .archive-job-expand pre { white-space: pre-wrap; word-break: break-word; max-height: 200px; overflow-y: auto; font-size: 12px; }
         .archive-load-more { margin-top: 16px; }
     </style>
 </head>
 <body>
-    <script>window.UI=${JSON.stringify(s).replace(/</g, '\\u003c')};window.LANG=${JSON.stringify(lang)};</script>
+    <script>window.UI=${JSON.stringify(s).replace(/</g, '\\u003c')};window.LANG=${JSON.stringify(lang)};window.PACK_GENERATION_STEPS=${JSON.stringify(PACK_GENERATION_STEPS)};</script>
     <div class="container">
         <nav class="top-nav">
             <a href="#" class="active" id="navWorkspace" onclick="switchTab('workspace'); return false;">{{navWorkspace}}</a>
             <a href="#" id="navArchive" onclick="switchTab('archive'); return false;">{{navArchive}}</a>
-            <span class="track-switcher">
-                <label for="activeTrackSelect">{{trackLabel}}</label>
-                <select id="activeTrackSelect" onchange="switchApplicationTrack(this.value)" title="{{trackSwitchHint}}">
-                    <option value="software-engineering">{{trackSoftwareEngineering}}</option>
-                    <option value="it-support">{{trackItSupport}}</option>
-                </select>
-                <span class="track-hint">{{trackSwitchHint}}</span>
-            </span>
             <span class="lang-switcher"><a href="?lang=en" class="{{langEnActive}}" style="text-decoration:none;color:inherit;">{{langSwitcherEn}}</a> | <a href="?lang=zh" class="{{langZhActive}}" style="text-decoration:none;color:inherit;">{{langSwitcherZh}}</a></span>
         </nav>
 
@@ -797,6 +1048,10 @@ function buildHtml(lang: Locale): string {
         <div class="header">
             <h1>📝 Resume Pack Generator</h1>
             <p>{{headerSubtitle}}</p>
+            <div class="daily-theme-badge" title="{{dailyThemeHint}}">
+                <span class="daily-theme-dot" aria-hidden="true"></span>
+                <span>{{dailyThemeLabel}} · {{dailyThemeName}}</span>
+            </div>
         </div>
 
         <div class="section">
@@ -837,14 +1092,6 @@ function buildHtml(lang: Locale): string {
             </div>
             <form id="jdForm">
                 <div class="form-group">
-                    <label for="companyInfo">{{companyInfoLabel}}</label>
-                    <textarea id="companyInfo" name="companyInfo" placeholder="{{companyInfoPlaceholder}}"></textarea>
-                    <div class="field-help-row">
-                        <span>{{companyHelper}}</span>
-                        <span class="char-counter" id="companyCount">{{charCount}}: 0</span>
-                    </div>
-                </div>
-                <div class="form-group">
                     <label for="jd">{{jdLabel}}</label>
                     <textarea id="jd" name="jd" required placeholder="{{jdPlaceholder}}"></textarea>
                     <div class="field-help-row">
@@ -853,8 +1100,27 @@ function buildHtml(lang: Locale): string {
                     </div>
                 </div>
                 <div class="form-group">
-                    <label for="fileUpload">{{fileUploadLabel}}</label>
-                    <input type="file" id="fileUpload" accept=".txt,.md">
+                    <label>{{trackLabel}}</label>
+                    <input type="hidden" id="applicationTrack" name="applicationTrack" value="software-engineering">
+                    <div class="track-buttons" role="radiogroup" aria-label="{{trackLabel}}" data-track-input="applicationTrack">
+                        <button type="button" class="track-btn selected" data-track="software-engineering" aria-pressed="true">
+                            {{trackSoftwareEngineering}}
+                        </button>
+                        <button type="button" class="track-btn" data-track="it-support" aria-pressed="false">
+                            {{trackItSupport}}
+                        </button>
+                    </div>
+                    <div class="field-help-row">
+                        <span>{{trackSelectHint}}</span>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="companyInfo">{{companyInfoLabel}}</label>
+                    <textarea id="companyInfo" name="companyInfo" placeholder="{{companyInfoPlaceholder}}"></textarea>
+                    <div class="field-help-row">
+                        <span>{{companyHelper}}</span>
+                        <span class="char-counter" id="companyCount">{{charCount}}: 0</span>
+                    </div>
                 </div>
                 <button type="submit" id="saveJdBtn" disabled>{{saveJdButton}}</button>
             </form>
@@ -868,6 +1134,31 @@ function buildHtml(lang: Locale): string {
                 <div class="apply-counter-desc">{{applyCounterDesc}}</div>
                 <div id="applyCounterValue" class="apply-counter-value">0 <span>{{applyCounterUnit}}</span></div>
                 <div id="applyStreakValue" class="apply-streak">🔥 {{streakLabel}}: 0 {{streakUnit}}</div>
+                <div class="submission-heatmap">
+                    <div class="heatmap-title">📊 {{heatmapTitle}}</div>
+                    <div class="heatmap-scroll">
+                        <div class="heatmap-chart">
+                            <div id="heatmapMonths" class="heatmap-months"></div>
+                            <div class="heatmap-body">
+                                <div id="heatmapWeekdays" class="heatmap-weekdays"></div>
+                                <div id="heatmapGrid" class="heatmap-grid"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="heatmapTooltip" class="heatmap-tooltip" hidden></div>
+                    <div class="heatmap-legend">
+                        <span>{{heatmapLegendLess}}</span>
+                        <span class="heatmap-cell level-0"></span>
+                        <span class="heatmap-cell level-1"></span>
+                        <span class="heatmap-cell level-2"></span>
+                        <span class="heatmap-cell level-3"></span>
+                        <span class="heatmap-cell level-4"></span>
+                        <span class="heatmap-cell level-5"></span>
+                        <span class="heatmap-cell level-6"></span>
+                        <span class="heatmap-cell level-7"></span>
+                        <span>{{heatmapLegendMore}}</span>
+                    </div>
+                </div>
             </div>
             <div class="star-buddy">
                 <div class="star-buddy-title">🌟 {{starBuddyTitle}}</div>
@@ -889,6 +1180,20 @@ function buildHtml(lang: Locale): string {
                 <button type="button" class="success" onclick="archiveAll()">🗂️ {{archiveAll}}</button>
                 <button class="danger" onclick="clearAll()">🧹 {{clearAll}}</button>
             </div>
+            <div id="batchStatus" class="batch-status">
+                <div class="batch-status-header">
+                    <div class="batch-status-title">
+                        <span id="batchStatusIcon" class="loading loading-inline" aria-hidden="true"></span>
+                        <span id="batchStatusTitle">{{batchProgressRunning}}</span>
+                    </div>
+                    <button type="button" class="batch-status-clear" id="batchStatusClear" onclick="clearPackBatchStatus()" disabled>{{batchProgressClear}}</button>
+                </div>
+                <div class="batch-status-primary" id="batchStatusPrimary"></div>
+                <div class="batch-progress-bar" aria-hidden="true">
+                    <div class="batch-progress-bar-fill" id="batchStatusBarFill"></div>
+                </div>
+                <div class="batch-status-secondary" id="batchStatusSecondary"></div>
+            </div>
             <div id="jdList" class="jd-list">
                 <p>{{loading}}</p>
             </div>
@@ -898,7 +1203,7 @@ function buildHtml(lang: Locale): string {
         <div id="archiveView" class="view-panel">
             <div class="section">
                 <h2>{{archiveTitle}}</h2>
-                <p style="color:#666;margin-bottom:16px;">{{archiveDesc}}</p>
+                <p class="text-muted" style="margin-bottom:16px;">{{archiveDesc}}</p>
                 <div class="archive-toolbar">
                     <input type="text" id="archiveSearch" placeholder="{{archiveSearchPlaceholder}}" onkeypress="if(event.key==='Enter')loadArchive(1)">
                     <button type="button" onclick="loadArchive(1)">{{archiveSearchBtn}}</button>
@@ -907,7 +1212,7 @@ function buildHtml(lang: Locale): string {
                 <div id="archiveLoadMoreWrap" class="archive-load-more" style="display:none;">
                     <button type="button" id="archiveLoadMoreBtn" onclick="loadArchiveNext()">{{loadMore}}</button>
                 </div>
-                <div id="archiveEmpty" style="display:none;color:#666;padding:20px;">{{archiveEmpty}}</div>
+                <div id="archiveEmpty" class="text-muted" style="display:none;padding:20px;">{{archiveEmpty}}</div>
             </div>
         </div>
     </div>
@@ -916,7 +1221,7 @@ function buildHtml(lang: Locale): string {
     <div id="regenerateModal" class="modal-overlay" style="display:none;">
         <div class="modal">
             <h3>{{regenerateModalTitle}}</h3>
-            <p style="color:#666;font-size:14px;margin-bottom:12px;">{{regenerateModalDesc}}</p>
+            <p class="text-muted" style="font-size:14px;margin-bottom:12px;">{{regenerateModalDesc}}</p>
             <textarea id="regenerateFeedback" placeholder="{{regeneratePlaceholder}}"></textarea>
             <div id="regenerateActions">
                 <button type="button" class="success" id="regenerateSubmitBtn" onclick="submitRegenerate()">{{regenerateSubmit}}</button>
@@ -924,10 +1229,51 @@ function buildHtml(lang: Locale): string {
             </div>
             <div id="regenerateResult" style="display:none;margin-top:20px;">
                 <h4>{{regenerateUpdated}}</h4>
-                <p style="color:#666;margin-bottom:8px;">{{regenerateFeedbackLabel}}</p>
+                <p class="text-muted" style="margin-bottom:8px;">{{regenerateFeedbackLabel}}</p>
                 <div id="regenerateFeedbackBody" class="regenerate-feedback-md result-content"></div>
                 <button type="button" onclick="closeRegenerateModal()" style="margin-top:16px;">{{close}}</button>
             </div>
+        </div>
+    </div>
+
+    <div id="editJobModal" class="modal-overlay" style="display:none;">
+        <div class="modal">
+            <h3>{{editModalTitle}}</h3>
+            <form id="editJobForm">
+                <div class="form-group">
+                    <label for="editJd">{{jdLabel}}</label>
+                    <textarea id="editJd" name="jd" placeholder="{{jdPlaceholder}}"></textarea>
+                    <div class="field-help-row">
+                        <span>{{jdHelper}}</span>
+                        <span class="char-counter" id="editJdCount">{{charCount}}: 0</span>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>{{trackLabel}}</label>
+                    <input type="hidden" id="editApplicationTrack" name="applicationTrack" value="software-engineering">
+                    <div class="track-buttons" role="radiogroup" aria-label="{{trackLabel}}" data-track-input="editApplicationTrack">
+                        <button type="button" class="track-btn selected" data-track="software-engineering" aria-pressed="true">
+                            {{trackSoftwareEngineering}}
+                        </button>
+                        <button type="button" class="track-btn" data-track="it-support" aria-pressed="false">
+                            {{trackItSupport}}
+                        </button>
+                    </div>
+                    <div class="field-help-row">
+                        <span>{{trackSelectHint}}</span>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="editCompanyInfo">{{companyInfoLabel}}</label>
+                    <textarea id="editCompanyInfo" name="companyInfo" placeholder="{{companyInfoPlaceholder}}" style="min-height:100px;"></textarea>
+                    <div class="field-help-row">
+                        <span>{{companyHelper}}</span>
+                        <span class="char-counter" id="editCompanyCount">{{charCount}}: 0</span>
+                    </div>
+                </div>
+                <button type="submit" class="success" id="editSaveBtn">{{editSaveButton}}</button>
+                <button type="button" onclick="closeEditJobModal()">{{cancel}}</button>
+            </form>
         </div>
     </div>
 
@@ -940,7 +1286,6 @@ function buildHtml(lang: Locale): string {
             UI.motivation4,
             UI.motivation5
         ].filter(Boolean);
-        const APPLY_STATE_KEY = 'daily_apply_counter_v1';
 
         const starBuddies = [
             { avatar: '⭐', name: 'Sparkle', mood: 'wink' },
@@ -985,63 +1330,139 @@ function buildHtml(lang: Locale): string {
             }
         }
 
-        function todayKey() {
-            const now = new Date();
-            return [now.getFullYear(), String(now.getMonth() + 1).padStart(2, '0'), String(now.getDate()).padStart(2, '0')].join('-');
-        }
-
-        function readApplyState() {
-            try {
-                const raw = localStorage.getItem(APPLY_STATE_KEY);
-                if (!raw) return { date: todayKey(), count: 0, jobs: [], activeDates: [] };
-                const parsed = JSON.parse(raw);
-                const date = parsed && parsed.date ? parsed.date : todayKey();
-                const activeDates = Array.isArray(parsed.activeDates) ? parsed.activeDates : [];
-                if (date !== todayKey()) return { date: todayKey(), count: 0, jobs: [], activeDates };
-                return {
-                    date,
-                    count: Number(parsed.count || 0),
-                    jobs: Array.isArray(parsed.jobs) ? parsed.jobs : [],
-                    activeDates,
-                };
-            } catch (_) {
-                return { date: todayKey(), count: 0, jobs: [], activeDates: [] };
-            }
-        }
-
-        function writeApplyState(state) {
-            try { localStorage.setItem(APPLY_STATE_KEY, JSON.stringify(state)); } catch (_) {}
-        }
-
-        function dateOffsetStr(baseDateStr, offsetDays) {
-            const d = new Date(baseDateStr + 'T00:00:00');
-            d.setDate(d.getDate() + offsetDays);
-            return [d.getFullYear(), String(d.getMonth() + 1).padStart(2, '0'), String(d.getDate()).padStart(2, '0')].join('-');
-        }
-
-        function calcStreak(activeDates) {
-            const active = new Set(activeDates);
-            let streak = 0;
-            const today = todayKey();
-            while (active.has(dateOffsetStr(today, -streak))) {
-                streak += 1;
-            }
-            return streak;
-        }
-
-        function renderApplyCounter() {
+        async function renderApplyCounter() {
             const el = document.getElementById('applyCounterValue');
             const streakEl = document.getElementById('applyStreakValue');
+            const grid = document.getElementById('heatmapGrid');
+            const monthsEl = document.getElementById('heatmapMonths');
+            const weekdaysEl = document.getElementById('heatmapWeekdays');
             if (!el) return;
-            const state = readApplyState();
-            el.innerHTML = String(state.count) + ' <span>' + UI.applyCounterUnit + '</span>';
-            if (streakEl) streakEl.textContent = '🔥 ' + UI.streakLabel + ': ' + calcStreak(state.activeDates) + ' ' + UI.streakUnit;
+            try {
+                const res = await fetch('/api/submissions/stats');
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || UI.requestFailed);
+                el.innerHTML = String(data.todayCount || 0) + ' <span>' + UI.applyCounterUnit + '</span>';
+                if (streakEl) streakEl.textContent = '🔥 ' + UI.streakLabel + ': ' + (data.streak || 0) + ' ' + UI.streakUnit;
+                if (grid && Array.isArray(data.heatmap)) {
+                    renderSubmissionHeatmap(data.heatmap, grid, monthsEl, weekdaysEl);
+                }
+            } catch (e) {
+                el.innerHTML = '0 <span>' + UI.applyCounterUnit + '</span>';
+                if (streakEl) streakEl.textContent = '🔥 ' + UI.streakLabel + ': 0 ' + UI.streakUnit;
+            }
+        }
+
+        function formatHeatmapMonth(dateKey) {
+            const parts = dateKey.split('-').map(Number);
+            const locale = window.LANG === 'zh' ? 'zh-CN' : 'en-US';
+            return new Intl.DateTimeFormat(locale, { month: 'short', timeZone: 'UTC' })
+                .format(new Date(Date.UTC(parts[0], parts[1] - 1, parts[2])));
+        }
+
+        function formatHeatmapDate(dateKey) {
+            const parts = dateKey.split('-').map(Number);
+            const locale = window.LANG === 'zh' ? 'zh-CN' : 'en-US';
+            return new Intl.DateTimeFormat(locale, {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric',
+                timeZone: 'UTC',
+            }).format(new Date(Date.UTC(parts[0], parts[1] - 1, parts[2])));
+        }
+
+        function renderSubmissionHeatmap(days, grid, monthsEl, weekdaysEl) {
+            const cellSize = 11;
+            const gap = 3;
+            const step = cellSize + gap;
+            const weekdayLabels = window.LANG === 'zh'
+                ? ['一', '', '三', '', '五', '', '']
+                : ['Mon', '', 'Wed', '', 'Fri', '', ''];
+            if (weekdaysEl) {
+                weekdaysEl.innerHTML = weekdayLabels.map(function(label) {
+                    return '<span>' + label + '</span>';
+                }).join('');
+            }
+            if (monthsEl) {
+                let monthsHtml = '';
+                let lastMonth = '';
+                let lastLeft = -999;
+                for (let i = 0; i < days.length; i += 7) {
+                    const weekStart = days[i];
+                    if (!weekStart) continue;
+                    const monthKey = weekStart.date.slice(0, 7);
+                    if (monthKey === lastMonth) continue;
+                    const left = (i / 7) * step;
+                    if (left - lastLeft < 28) {
+                        lastMonth = monthKey;
+                        continue;
+                    }
+                    monthsHtml += '<span class="heatmap-month" style="left:' + left + 'px">' +
+                        formatHeatmapMonth(weekStart.date) + '</span>';
+                    lastMonth = monthKey;
+                    lastLeft = left;
+                }
+                monthsEl.innerHTML = monthsHtml;
+            }
+            grid.innerHTML = days.map(function(day) {
+                const level = day.level || 0;
+                return '<span class="heatmap-cell level-' + level +
+                    '" data-date="' + day.date +
+                    '" data-count="' + day.count +
+                    '" role="img" aria-label="' + day.date + ': ' + day.count + ' ' + UI.applyCounterUnit + '"></span>';
+            }).join('');
+            bindHeatmapTooltip(grid);
+        }
+
+        function bindHeatmapTooltip(grid) {
+            const tip = document.getElementById('heatmapTooltip');
+            if (!tip || grid.dataset.tooltipBound === '1') return;
+            grid.dataset.tooltipBound = '1';
+
+            function hideTip() {
+                tip.hidden = true;
+            }
+
+            function showTip(cell, event) {
+                const date = cell.getAttribute('data-date') || '';
+                const count = cell.getAttribute('data-count') || '0';
+                tip.textContent = formatHeatmapDate(date) + ' · ' + count + ' ' + UI.applyCounterUnit;
+                tip.hidden = false;
+                const x = event.clientX;
+                const y = event.clientY;
+                tip.style.left = x + 'px';
+                tip.style.top = y + 'px';
+            }
+
+            grid.addEventListener('mouseover', function(event) {
+                const cell = event.target.closest('.heatmap-cell');
+                if (!cell || !grid.contains(cell)) return;
+                showTip(cell, event);
+            });
+            grid.addEventListener('mousemove', function(event) {
+                const cell = event.target.closest('.heatmap-cell');
+                if (!cell || !grid.contains(cell)) return;
+                tip.style.left = event.clientX + 'px';
+                tip.style.top = event.clientY + 'px';
+            });
+            grid.addEventListener('mouseleave', hideTip);
+        }
+
+        function themeConfettiColors() {
+            const root = getComputedStyle(document.documentElement);
+            return [
+                root.getPropertyValue('--theme-primary-muted').trim(),
+                root.getPropertyValue('--theme-star-detail').trim(),
+                root.getPropertyValue('--theme-stats-accent').trim(),
+                root.getPropertyValue('--theme-warm-title').trim(),
+                root.getPropertyValue('--theme-primary').trim(),
+            ].filter(Boolean);
         }
 
         function celebrateConfetti() {
             const layer = document.getElementById('confettiLayer');
             if (!layer) return;
-            const colors = ['#60a5fa', '#f472b6', '#34d399', '#fbbf24', '#a78bfa'];
+            const colors = themeConfettiColors();
+            if (colors.length === 0) return;
             for (let i = 0; i < 42; i++) {
                 const piece = document.createElement('span');
                 piece.className = 'confetti';
@@ -1054,18 +1475,19 @@ function buildHtml(lang: Locale): string {
             }
         }
 
-        function markApplied(jobId) {
-            const state = readApplyState();
-            const today = todayKey();
-            if (!state.jobs.includes(jobId)) {
-                state.jobs.push(jobId);
-                state.count += 1;
-                if (!state.activeDates.includes(today)) state.activeDates.push(today);
+        async function archiveOneJob(jobId) {
+            if (!confirm(UI.archiveOneConfirm)) return;
+            try {
+                const res = await fetch('/api/archive/' + encodeURIComponent(jobId), { method: 'POST' });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || UI.requestFailed);
+                celebrateConfetti();
+                showMessage('🎉 ' + UI.applySuccess, 'success');
+                await renderApplyCounter();
+                refreshList();
+            } catch (e) {
+                showMessage(UI.msgLoadFailed + (e && e.message ? e.message : ''), 'error');
             }
-            writeApplyState(state);
-            renderApplyCounter();
-            celebrateConfetti();
-            showMessage('🎉 ' + UI.applySuccess, 'success');
         }
 
         function refreshMotivation() {
@@ -1103,64 +1525,55 @@ function buildHtml(lang: Locale): string {
                 });
             }
             if (companyEl) companyEl.addEventListener('input', updateInputUxState);
+            document.querySelectorAll('.track-buttons').forEach(bindTrackButtons);
+            const editJd = document.getElementById('editJd');
+            const editCompany = document.getElementById('editCompanyInfo');
+            if (editJd) editJd.addEventListener('input', updateEditUxState);
+            if (editCompany) editCompany.addEventListener('input', updateEditUxState);
             updateInputUxState();
             renderApplyCounter();
             renderDailyStarBuddy();
             refreshMotivation();
             refreshList();
-            loadActiveTrack();
         });
 
-        async function loadActiveTrack() {
-            try {
-                const res = await fetch('/api/track');
-                const data = await res.json();
-                if (!res.ok) throw new Error(data.error || UI.requestFailed);
-                const sel = document.getElementById('activeTrackSelect');
-                if (sel && data.activeTrack) sel.value = data.activeTrack;
-            } catch (error) {
-                console.error('loadActiveTrack', error);
-            }
+        function bindTrackButtons(group) {
+            group.addEventListener('click', (e) => {
+                const btn = e.target.closest('.track-btn');
+                if (!btn || !group.contains(btn)) return;
+                const track = btn.getAttribute('data-track');
+                if (!track) return;
+                setTrackSelection(group.getAttribute('data-track-input'), track);
+            });
         }
 
-        async function switchApplicationTrack(trackId) {
-            const sel = document.getElementById('activeTrackSelect');
-            try {
-                const res = await fetch('/api/track', {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ activeTrack: trackId }),
-                });
-                const data = await res.json();
-                if (!res.ok) throw new Error(data.error || UI.requestFailed);
-                showMessage('✓ ' + UI.trackSwitchOk, 'success');
-                refreshList();
-            } catch (error) {
-                showMessage('✗ ' + UI.trackSwitchFailed + error.message, 'error');
-                await loadActiveTrack();
-                if (sel) { /* restored from server */ }
-            }
+        function setTrackSelection(inputId, track) {
+            const input = document.getElementById(inputId);
+            if (input) input.value = track;
+            document.querySelectorAll('.track-buttons[data-track-input="' + inputId + '"] .track-btn').forEach((btn) => {
+                const selected = btn.getAttribute('data-track') === track;
+                btn.classList.toggle('selected', selected);
+                btn.setAttribute('aria-pressed', selected ? 'true' : 'false');
+            });
         }
 
-        // 文件上传处理
-        document.getElementById('fileUpload').addEventListener('change', async (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
-
-            try {
-                const text = await file.text();
-                document.getElementById('jd').value = text;
-                showMessage(UI.msgFileLoaded, 'success');
-            } catch (error) {
-                showMessage(UI.msgFileError + error.message, 'error');
-            }
-        });
+        function updateEditUxState() {
+            const jdEl = document.getElementById('editJd');
+            const companyEl = document.getElementById('editCompanyInfo');
+            const jdCount = document.getElementById('editJdCount');
+            const companyCount = document.getElementById('editCompanyCount');
+            const jdLen = jdEl ? jdEl.value.trim().length : 0;
+            const companyLen = companyEl ? companyEl.value.trim().length : 0;
+            if (jdCount) jdCount.textContent = UI.charCount + ': ' + jdLen;
+            if (companyCount) companyCount.textContent = UI.charCount + ': ' + companyLen;
+        }
 
         // 表单提交
         document.getElementById('jdForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             const jdText = document.getElementById('jd').value.trim();
             const companyText = (document.getElementById('companyInfo') && document.getElementById('companyInfo').value) ? document.getElementById('companyInfo').value.trim() : '';
+            const applicationTrack = document.getElementById('applicationTrack')?.value || 'software-engineering';
             if (!jdText) {
                 showMessage('✗ ' + UI.msgJdRequired, 'error');
                 return;
@@ -1169,7 +1582,7 @@ function buildHtml(lang: Locale): string {
                 const response = await fetch('/api/ingest', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ jd: jdText, companyInfo: companyText || undefined })
+                    body: JSON.stringify({ jd: jdText, companyInfo: companyText || undefined, applicationTrack })
                 });
                 
                 const result = await response.json();
@@ -1177,6 +1590,8 @@ function buildHtml(lang: Locale): string {
                 if (response.ok) {
                     showMessage('✓ ' + UI.msgSaveSuccess + result.jobId, 'success');
                     e.target.reset();
+                    setTrackSelection('applicationTrack', 'software-engineering');
+                    updateInputUxState();
                     refreshList();
                 } else {
                     showMessage('✗ ' + UI.msgError + result.error, 'error');
@@ -1186,65 +1601,341 @@ function buildHtml(lang: Locale): string {
             }
         });
 
+        document.getElementById('editJobForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            await submitEditJob();
+        });
+
+        const PACK_BATCH_STORAGE_KEY = 'packBatchJobIds';
+        let packBatchJobIds = null;
+        let packBatchVisible = false;
+        let packBatchRunning = false;
+        let packBatchPollTimer = null;
+        let packBatchConfirmPolls = 0;
+        let regenerateRunning = false;
+
+        function isGenerationLocked() {
+            return packBatchRunning || regenerateRunning;
+        }
+
+        function packStepsOf(job) {
+            return (job && job.status && job.status.steps) ? job.status.steps : {};
+        }
+
+        function isBatchJobDone(job) {
+            const steps = packStepsOf(job);
+            if (steps.review === 'completed') return true;
+            return PACK_GENERATION_STEPS.some(function(step) { return steps[step] === 'failed'; });
+        }
+
+        function isBatchJobFailed(job) {
+            const steps = packStepsOf(job);
+            if (steps.review === 'completed') return false;
+            return PACK_GENERATION_STEPS.some(function(step) { return steps[step] === 'failed'; });
+        }
+
+        function isPackGenerationInFlight(job) {
+            if (job && job.progress) return false;
+            const steps = packStepsOf(job);
+            return PACK_GENERATION_STEPS.some(function(step) { return steps[step] === 'in_progress'; });
+        }
+
+        function finishedPackStepsForJob(job) {
+            if (isBatchJobDone(job)) return PACK_GENERATION_STEPS.length;
+            const steps = packStepsOf(job);
+            return PACK_GENERATION_STEPS.filter(function(step) {
+                return steps[step] === 'completed' || steps[step] === 'failed';
+            }).length;
+        }
+
+        function summarizeBatchProgress(jobs) {
+            const jobTotal = jobs.length;
+            const stepTotal = jobTotal * PACK_GENERATION_STEPS.length;
+            let stepFinished = 0;
+            let jobFinished = 0;
+            let jobFailed = 0;
+            let inFlight = false;
+            for (let i = 0; i < jobs.length; i++) {
+                const job = jobs[i];
+                stepFinished += finishedPackStepsForJob(job);
+                if (isBatchJobDone(job)) {
+                    jobFinished += 1;
+                    if (isBatchJobFailed(job)) jobFailed += 1;
+                }
+                if (isPackGenerationInFlight(job)) inFlight = true;
+            }
+            return {
+                stepFinished: stepFinished,
+                stepTotal: stepTotal,
+                jobFinished: jobFinished,
+                jobTotal: jobTotal,
+                jobFailed: jobFailed,
+                inFlight: inFlight,
+                allDone: jobTotal > 0 && jobFinished === jobTotal
+            };
+        }
+
+        function packStepProgressHtml(job) {
+            if (!job || job.progress || job.packComplete || isBatchJobDone(job)) return '';
+            const finished = finishedPackStepsForJob(job);
+            if (finished === 0 && !isPackGenerationInFlight(job)) return '';
+            const pct = Math.round((finished / PACK_GENERATION_STEPS.length) * 100);
+            const label = UI.statusGenerating + ' (' + finished + '/' + PACK_GENERATION_STEPS.length + ')';
+            return '<div class="pack-step-progress regenerate-progress"><div class="regenerate-label">' + label + '</div><div class="regenerate-bar"><div class="regenerate-bar-fill" style="width:' + pct + '%"></div></div></div>';
+        }
+
+        function setGenerateControlsDisabled(disabled) {
+            const allBtn = document.getElementById('generateAllBtn');
+            if (allBtn) {
+                allBtn.disabled = disabled;
+                if (disabled && packBatchRunning) {
+                    allBtn.innerHTML = UI.statusGenerating + '... <span class="loading loading-inline"></span>';
+                } else if (!disabled) {
+                    allBtn.textContent = '⚡ ' + UI.generateAllBtn;
+                }
+            }
+            document.querySelectorAll('[id^="generate-btn-"]').forEach(function(btn) {
+                btn.disabled = disabled;
+            });
+            document.querySelectorAll('[id^="regen-btn-"]').forEach(function(btn) {
+                if (btn.style.display !== 'none') btn.disabled = disabled;
+            });
+        }
+
+        function syncGenerationLocks() {
+            setGenerateControlsDisabled(isGenerationLocked());
+            const clearBtn = document.getElementById('batchStatusClear');
+            if (clearBtn) clearBtn.disabled = packBatchRunning || !packBatchVisible;
+        }
+
+        function persistPackBatchIds(ids) {
+            try {
+                if (ids && ids.length) sessionStorage.setItem(PACK_BATCH_STORAGE_KEY, JSON.stringify(ids));
+                else sessionStorage.removeItem(PACK_BATCH_STORAGE_KEY);
+            } catch (e) {}
+        }
+
+        function readPersistedPackBatchIds() {
+            try {
+                const raw = sessionStorage.getItem(PACK_BATCH_STORAGE_KEY);
+                if (!raw) return null;
+                const ids = JSON.parse(raw);
+                return Array.isArray(ids) ? ids.filter(Boolean) : null;
+            } catch (e) {
+                return null;
+            }
+        }
+
+        function renderPackBatchStatus(summary) {
+            const panel = document.getElementById('batchStatus');
+            if (!panel || !packBatchVisible || !summary) return;
+            panel.classList.add('visible');
+            panel.classList.toggle('done', !!summary.allDone);
+            panel.classList.toggle('has-failures', summary.jobFailed > 0);
+            const icon = document.getElementById('batchStatusIcon');
+            const title = document.getElementById('batchStatusTitle');
+            const primary = document.getElementById('batchStatusPrimary');
+            const secondary = document.getElementById('batchStatusSecondary');
+            const fill = document.getElementById('batchStatusBarFill');
+            if (icon) icon.style.display = summary.allDone ? 'none' : 'inline-block';
+            if (title) title.textContent = summary.allDone ? UI.batchProgressDone : UI.batchProgressRunning;
+            const stepPct = summary.stepTotal ? Math.round((summary.stepFinished / summary.stepTotal) * 100) : 0;
+            if (primary) {
+                primary.textContent = UI.batchProgressSteps + ' ' + summary.stepFinished + '/' + summary.stepTotal + ' (' + stepPct + '%)';
+            }
+            if (fill) fill.style.width = stepPct + '%';
+            if (secondary) {
+                let jobLine = UI.batchProgressJobs + ' ' + summary.jobFinished + '/' + summary.jobTotal;
+                if (summary.jobFailed > 0) jobLine += ' (' + summary.jobFailed + ' ' + UI.batchProgressFailed + ')';
+                secondary.textContent = jobLine;
+            }
+            syncGenerationLocks();
+        }
+
+        function hidePackBatchStatus() {
+            const panel = document.getElementById('batchStatus');
+            if (panel) {
+                panel.classList.remove('visible', 'done', 'has-failures');
+            }
+            packBatchVisible = false;
+            packBatchJobIds = null;
+            packBatchRunning = false;
+            persistPackBatchIds(null);
+            syncGenerationLocks();
+        }
+
+        function clearPackBatchStatus(force) {
+            if (packBatchRunning && !force) return;
+            stopPackBatchPolling();
+            hidePackBatchStatus();
+        }
+
+        function stopPackBatchPolling() {
+            if (packBatchPollTimer) {
+                clearInterval(packBatchPollTimer);
+                packBatchPollTimer = null;
+            }
+            packBatchConfirmPolls = 0;
+        }
+
+        function batchJobsFromList(allJobs, ids) {
+            const idSet = {};
+            (ids || []).forEach(function(id) { idSet[id] = true; });
+            return (allJobs || []).filter(function(j) { return idSet[j.id]; });
+        }
+
+        async function pollPackBatchOnce() {
+            try {
+                const response = await fetch('/api/jobs');
+                const jobs = await response.json();
+                if (!Array.isArray(jobs)) return;
+                await refreshListFromJobs(jobs);
+                if (!packBatchJobIds || !packBatchJobIds.length) return;
+                const batchJobs = batchJobsFromList(jobs, packBatchJobIds);
+                const summary = summarizeBatchProgress(batchJobs);
+                renderPackBatchStatus(summary);
+                if (summary.allDone) {
+                    packBatchRunning = false;
+                    persistPackBatchIds(null);
+                    packBatchConfirmPolls += 1;
+                    if (packBatchConfirmPolls >= 2) stopPackBatchPolling();
+                    syncGenerationLocks();
+                } else {
+                    packBatchRunning = true;
+                    packBatchConfirmPolls = 0;
+                    syncGenerationLocks();
+                }
+            } catch (e) {}
+        }
+
+        function startPackBatchPolling() {
+            stopPackBatchPolling();
+            pollPackBatchOnce();
+            packBatchPollTimer = setInterval(pollPackBatchOnce, 2000);
+        }
+
+        function beginPackBatch(jobIds) {
+            const ids = (jobIds || []).filter(Boolean);
+            if (!ids.length) {
+                showMessage('✗ ' + UI.noJobs, 'error');
+                return false;
+            }
+            packBatchJobIds = ids;
+            packBatchVisible = true;
+            packBatchRunning = true;
+            persistPackBatchIds(ids);
+            renderPackBatchStatus({
+                stepFinished: 0,
+                stepTotal: ids.length * PACK_GENERATION_STEPS.length,
+                jobFinished: 0,
+                jobTotal: ids.length,
+                jobFailed: 0,
+                inFlight: true,
+                allDone: false
+            });
+            syncGenerationLocks();
+            startPackBatchPolling();
+            return true;
+        }
+
+        function tryRestorePackBatch(jobs) {
+            if (packBatchVisible || regenerateRunning) return;
+            const persisted = readPersistedPackBatchIds();
+            let ids = persisted;
+            if (!ids || !ids.length) {
+                const inflight = (jobs || []).filter(isPackGenerationInFlight).map(function(j) { return j.id; });
+                if (!inflight.length) return;
+                ids = inflight;
+            }
+            const batchJobs = batchJobsFromList(jobs, ids);
+            if (!batchJobs.some(isPackGenerationInFlight)) {
+                persistPackBatchIds(null);
+                return;
+            }
+            packBatchJobIds = ids;
+            packBatchVisible = true;
+            packBatchRunning = true;
+            persistPackBatchIds(ids);
+            renderPackBatchStatus(summarizeBatchProgress(batchJobs));
+            startPackBatchPolling();
+        }
+
         // 刷新列表
         async function refreshList() {
             try {
                 const response = await fetch('/api/jobs');
                 const jobs = await response.json();
-                
-                const listDiv = document.getElementById('jdList');
-                if (jobs.length === 0) {
-                    listDiv.innerHTML = '<div class="empty-state"><h3>' + UI.noJobsTitle + '</h3><p>' + UI.noJobsHint + '</p></div>';
-                    return;
+                await refreshListFromJobs(jobs);
+                tryRestorePackBatch(jobs);
+                if (packBatchVisible && packBatchJobIds) {
+                    renderPackBatchStatus(summarizeBatchProgress(batchJobsFromList(jobs, packBatchJobIds)));
                 }
-
-                listDiv.innerHTML = jobs.map(job => {
-                    const status = job.status || {};
-                    const progress = job.progress;
-                    const statusText = progress ? (progress === 'review' ? UI.statusRegen2 : UI.statusRegen1) : getStatusText(status);
-                    const statusClass = progress ? 'status-in-progress' : getStatusClass(status);
-                    const title = job.title || UI.jobTitleDefault;
-                    const content = job.content || '';
-                    const escapedContent = content.replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                    const progressPct = progress === 'review' ? 100 : (progress === 'regenerate' ? 50 : 0);
-                    const progressBar = progress ? \`
-                        <div class="regenerate-progress">
-                            <div class="regenerate-label">\${progress === 'review' ? UI.statusRegenLabel2 : UI.statusRegenLabel1}</div>
-                            <div class="regenerate-bar"><div class="regenerate-bar-fill" style="width:\${progressPct}%"></div></div>
-                        </div>
-                    \` : '';
-                    const modeClass = job.hasCompanyInfo ? 'has-company-profile' : 'jd-only';
-                    const modeBadgeClass = job.hasCompanyInfo ? 'has-company' : 'jd-only';
-                    const modeText = job.hasCompanyInfo ? UI.modeHasCompany : UI.modeJdOnly;
-                    const staleBadge = job.stale
-                        ? \` <span class="jd-mode-badge jd-only">\${UI.modeStalePack}</span>\`
-                        : '';
-                    return \`
-                        <div class="jd-item \${modeClass}" data-job-id="\${job.id}">
-                            <div class="jd-item-header">
-                                <div>
-                                    <div class="jd-item-title">\${title} <span class="jd-mode-badge \${modeBadgeClass}">\${modeText}</span>\${staleBadge}</div>
-                                    <div class="jd-item-id">ID: \${job.id}</div>
-                                </div>
-                                <div class="jd-item-actions">
-                                    <span class="status-badge \${statusClass}" id="status-badge-\${job.id}">\${statusText}</span>
-                                    <button onclick="generateJob('\${job.id}')" class="success" id="generate-btn-\${job.id}">⚡ \${UI.btnGenerate}</button>
-                                    <button onclick="toggleJdContent('\${job.id}')">📄 \${UI.btnViewJd}</button>
-                                    <button onclick="viewResults('\${job.id}')">📊 \${UI.btnViewResults}</button>
-                                    <button type="button" onclick="openRegenerateModal('\${job.id}')" class="success" id="regen-btn-\${job.id}" style="display:\${status?.steps?.review === 'completed' && !progress ? 'inline-block' : 'none'}">♻️ \${UI.btnRegenerate}</button>
-                                    <button type="button" onclick="markApplied('\${job.id}')">🎯 \${UI.btnMarkApplied}</button>
-                                    <button onclick="deleteJob('\${job.id}')" class="danger">🗑️ \${UI.btnDelete}</button>
-                                </div>
-                            </div>
-                            <div id="regenerate-progress-wrap-\${job.id}" class="regenerate-progress-wrap">\${progressBar}</div>
-                            <div id="jd-content-\${job.id}" class="jd-item-content">\${escapedContent}</div>
-                            <div id="results-\${job.id}" class="results-panel"></div>
-                        </div>
-                    \`;
-                }).join('');
             } catch (error) {
                 document.getElementById('jdList').innerHTML = '<p class="error">' + UI.msgLoadFailed + error.message + '</p>';
             }
+        }
+
+        async function refreshListFromJobs(jobs) {
+            const listDiv = document.getElementById('jdList');
+            if (!jobs || jobs.length === 0) {
+                listDiv.innerHTML = '<div class="empty-state"><h3>' + UI.noJobsTitle + '</h3><p>' + UI.noJobsHint + '</p></div>';
+                return;
+            }
+
+            listDiv.innerHTML = jobs.map(job => {
+                const status = job.status || {};
+                const progress = job.progress;
+                const statusText = progress ? (progress === 'review' ? UI.statusRegen2 : UI.statusRegen1) : getStatusText(status);
+                const statusClass = progress ? 'status-in-progress' : getStatusClass(status);
+                const title = job.title || UI.jobTitleDefault;
+                const content = job.content || '';
+                const escapedContent = content.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                const progressPct = progress === 'review' ? 100 : (progress === 'regenerate' ? 50 : 0);
+                const regenProgressBar = progress ? \`
+                    <div class="regenerate-progress">
+                        <div class="regenerate-label">\${progress === 'review' ? UI.statusRegenLabel2 : UI.statusRegenLabel1}</div>
+                        <div class="regenerate-bar"><div class="regenerate-bar-fill" style="width:\${progressPct}%"></div></div>
+                    </div>
+                \` : '';
+                const packProgressBar = progress ? '' : packStepProgressHtml(job);
+                const progressBar = regenProgressBar || packProgressBar;
+                const modeClass = job.hasCompanyInfo ? 'has-company-profile' : 'jd-only';
+                const modeBadgeClass = job.hasCompanyInfo ? 'has-company' : 'jd-only';
+                const modeText = job.hasCompanyInfo ? UI.modeHasCompany : UI.modeJdOnly;
+                const trackLabel = job.applicationTrack === 'it-support'
+                    ? UI.trackItSupport
+                    : UI.trackSoftwareEngineering;
+                const inFlight = !!(progress || (status?.steps && Object.values(status.steps).some(s => s === 'in_progress')));
+                const generatingClass = isPackGenerationInFlight(job) || progress ? ' is-generating' : (isBatchJobFailed(job) ? ' is-failed' : '');
+                const editBtn = inFlight
+                    ? ''
+                    : \`<button type="button" onclick="openEditJobModal('\${job.id}')">✏️ \${UI.btnEdit}</button>\`;
+                const genDisabled = isGenerationLocked() ? ' disabled' : '';
+                return \`
+                    <div class="jd-item \${modeClass}\${generatingClass}" data-job-id="\${job.id}">
+                        <div class="jd-item-header">
+                            <div>
+                                <div class="jd-item-title">\${title} <span class="jd-mode-badge \${modeBadgeClass}">\${modeText}</span> <span class="jd-mode-badge">\${trackLabel}</span></div>
+                                <div class="jd-item-id">ID: \${job.id}</div>
+                            </div>
+                            <div class="jd-item-actions">
+                                <span class="status-badge \${statusClass}" id="status-badge-\${job.id}">\${statusText}</span>
+                                <button onclick="generateJob('\${job.id}')" class="success" id="generate-btn-\${job.id}"\${genDisabled}>⚡ \${UI.btnGenerate}</button>
+                                \${editBtn}
+                                <button onclick="toggleJdContent('\${job.id}')">📄 \${UI.btnViewJd}</button>
+                                <button onclick="viewResults('\${job.id}')">📊 \${UI.btnViewResults}</button>
+                                <button type="button" onclick="openRegenerateModal('\${job.id}')" class="success" id="regen-btn-\${job.id}" style="display:\${status?.steps?.review === 'completed' && !progress ? 'inline-block' : 'none'}"\${genDisabled}>♻️ \${UI.btnRegenerate}</button>
+                                <button type="button" class="success" onclick="archiveOneJob('\${job.id}')">🗂️ \${UI.btnArchiveJob}</button>
+                                <button onclick="deleteJob('\${job.id}')" class="danger">🗑️ \${UI.btnDelete}</button>
+                            </div>
+                        </div>
+                        <div id="regenerate-progress-wrap-\${job.id}" class="regenerate-progress-wrap">\${progressBar}</div>
+                        <div id="jd-content-\${job.id}" class="jd-item-content">\${escapedContent}</div>
+                        <div id="results-\${job.id}" class="results-panel"></div>
+                    </div>
+                \`;
+            }).join('');
+            syncGenerationLocks();
         }
 
         function getStatusText(status) {
@@ -1293,13 +1984,19 @@ function buildHtml(lang: Locale): string {
             const statusText = progress ? (progress === 'review' ? UI.statusRegen2 : UI.statusRegen1) : getStatusText(status);
             const statusClass = progress ? 'status-in-progress' : getStatusClass(status);
             const progressPct = progress === 'review' ? 100 : (progress === 'regenerate' ? 50 : 0);
-            const progressBarHtml = progress ? '<div class="regenerate-progress"><div class="regenerate-label">' + (progress === 'review' ? UI.statusRegenLabel2 : UI.statusRegenLabel1) + '</div><div class="regenerate-bar"><div class="regenerate-bar-fill" style="width:' + progressPct + '%"></div></div></div>' : '';
+            const regenProgressBar = progress ? '<div class="regenerate-progress"><div class="regenerate-label">' + (progress === 'review' ? UI.statusRegenLabel2 : UI.statusRegenLabel1) + '</div><div class="regenerate-bar"><div class="regenerate-bar-fill" style="width:' + progressPct + '%"></div></div></div>' : '';
+            const progressBarHtml = regenProgressBar || packStepProgressHtml(job);
             const badge = card.querySelector('#status-badge-' + jobId);
             if (badge) { badge.textContent = statusText; badge.className = 'status-badge ' + statusClass; }
             const progressWrap = card.querySelector('#regenerate-progress-wrap-' + jobId);
-            if (progressWrap) { progressWrap.innerHTML = progressBarHtml; progressWrap.style.display = progress ? 'block' : 'none'; }
+            if (progressWrap) {
+                progressWrap.innerHTML = progressBarHtml;
+                progressWrap.style.display = progressBarHtml ? 'block' : 'none';
+            }
             const regenBtn = card.querySelector('#regen-btn-' + jobId);
             if (regenBtn) regenBtn.style.display = (status && status.steps && status.steps.review === 'completed' && !progress) ? 'inline-block' : 'none';
+            card.classList.toggle('is-generating', !!(isPackGenerationInFlight(job) || progress));
+            card.classList.toggle('is-failed', !progress && isBatchJobFailed(job));
         }
 
         // 查看结果
@@ -1459,8 +2156,103 @@ function buildHtml(lang: Locale): string {
             }
         }
 
+        let editJobId = null;
+        let editOriginal = null;
+        let editHasOutputs = false;
+
+        async function openEditJobModal(jobId) {
+            try {
+                const response = await fetch('/api/jobs/' + encodeURIComponent(jobId));
+                const data = await response.json();
+                if (!response.ok) {
+                    showMessage('✗ ' + UI.msgError + (data.error || UI.requestFailed), 'error');
+                    return;
+                }
+                if (data.inFlight) {
+                    showMessage('✗ ' + UI.msgEditInFlight, 'error');
+                    return;
+                }
+                editJobId = jobId;
+                editOriginal = {
+                    jd: data.jd || '',
+                    companyInfo: data.companyInfo || '',
+                    applicationTrack: data.applicationTrack || 'software-engineering'
+                };
+                editHasOutputs = !!data.hasGenerationOutputs;
+                document.getElementById('editJd').value = editOriginal.jd;
+                document.getElementById('editCompanyInfo').value = editOriginal.companyInfo;
+                setTrackSelection('editApplicationTrack', editOriginal.applicationTrack);
+                updateEditUxState();
+                document.getElementById('editJobModal').style.display = 'flex';
+            } catch (error) {
+                showMessage('✗ ' + UI.msgError + error.message, 'error');
+            }
+        }
+
+        function closeEditJobModal() {
+            editJobId = null;
+            editOriginal = null;
+            editHasOutputs = false;
+            document.getElementById('editJobModal').style.display = 'none';
+        }
+
+        async function submitEditJob() {
+            if (!editJobId || !editOriginal) return;
+            const jdText = document.getElementById('editJd').value.trim();
+            const companyText = document.getElementById('editCompanyInfo').value.trim();
+            const applicationTrack = document.getElementById('editApplicationTrack').value || 'software-engineering';
+
+            if (!jdText) {
+                if (!confirm(UI.msgEditEmptyJdDeleteConfirm)) return;
+            } else {
+                const dirty =
+                    jdText !== editOriginal.jd.trim() ||
+                    companyText !== (editOriginal.companyInfo || '').trim() ||
+                    applicationTrack !== editOriginal.applicationTrack;
+                if (dirty && editHasOutputs) {
+                    if (!confirm(UI.msgEditClearedPackConfirm)) return;
+                }
+            }
+
+            const btn = document.getElementById('editSaveBtn');
+            if (btn) btn.disabled = true;
+            try {
+                const response = await fetch('/api/jobs/' + encodeURIComponent(editJobId), {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        jd: jdText,
+                        companyInfo: companyText,
+                        applicationTrack
+                    })
+                });
+                const result = await response.json();
+                if (!response.ok) {
+                    showMessage('✗ ' + UI.msgError + (result.error || UI.msgEditBlocked), 'error');
+                    return;
+                }
+                if (result.kind === 'deleted') {
+                    showMessage('✓ ' + UI.msgEditDeleted, 'success');
+                } else if (result.kind === 'unchanged') {
+                    showMessage('✓ ' + UI.msgEditUnchanged, 'info');
+                } else {
+                    showMessage('✓ ' + UI.msgEditSuccess, 'success');
+                }
+                closeEditJobModal();
+                refreshList();
+            } catch (error) {
+                showMessage('✗ ' + UI.msgError + error.message, 'error');
+            } finally {
+                if (btn) btn.disabled = false;
+            }
+        }
+
         let regenModalJobId = null;
         async function openRegenerateModal(jobId) {
+            if (isGenerationLocked()) {
+                showMessage(packBatchRunning ? UI.batchBusyHint : UI.regenBusyHint, 'info');
+                return;
+            }
             regenModalJobId = jobId;
             document.getElementById('regenerateResult').style.display = 'none';
             document.getElementById('regenerateActions').style.display = 'block';
@@ -1480,6 +2272,10 @@ function buildHtml(lang: Locale): string {
         }
         async function submitRegenerate() {
             if (!regenModalJobId) return;
+            if (isGenerationLocked()) {
+                showMessage(packBatchRunning ? UI.batchBusyHint : UI.regenBusyHint, 'info');
+                return;
+            }
             const jobIdToPoll = regenModalJobId;
             const feedback = document.getElementById('regenerateFeedback').value.trim();
             const btn = document.getElementById('regenerateSubmitBtn');
@@ -1495,6 +2291,8 @@ function buildHtml(lang: Locale): string {
                 if (!res.ok) throw new Error(data.error || UI.requestFailed);
                 closeRegenerateModal();
                 showMessage(UI.regenStarted, 'info');
+                regenerateRunning = true;
+                syncGenerationLocks();
                 if (window.regeneratePollingTimer) clearInterval(window.regeneratePollingTimer);
                 var doPoll = async function() {
                     try {
@@ -1504,8 +2302,11 @@ function buildHtml(lang: Locale): string {
                         if (job) updateJobCard(jobIdToPoll, job);
                         if (!job || !job.progress) {
                             if (window.regeneratePollingTimer) { clearInterval(window.regeneratePollingTimer); window.regeneratePollingTimer = null; }
+                            regenerateRunning = false;
+                            syncGenerationLocks();
                             var panel = document.getElementById('results-' + jobIdToPoll);
                             if (panel && panel.classList.contains('active')) viewResults(jobIdToPoll);
+                            refreshList();
                         }
                     } catch (e) {}
                 };
@@ -1513,6 +2314,8 @@ function buildHtml(lang: Locale): string {
                 window.regeneratePollingTimer = setInterval(doPoll, 2500);
                 setTimeout(function() {
                     if (window.regeneratePollingTimer) { clearInterval(window.regeneratePollingTimer); window.regeneratePollingTimer = null; }
+                    regenerateRunning = false;
+                    syncGenerationLocks();
                 }, 60000);
             } catch (e) {
                 showMessage(UI.msgError + e.message, 'error');
@@ -1522,61 +2325,71 @@ function buildHtml(lang: Locale): string {
             }
         }
 
-        // 生成单个职位
+        // 生成单个职位的申请材料
         async function generateJob(jobId) {
+            if (isGenerationLocked()) {
+                showMessage(packBatchRunning ? UI.batchBusyHint : UI.regenBusyHint, 'info');
+                return;
+            }
             const btn = document.getElementById('generate-btn-' + jobId);
-            if (!btn) return;
-            
-            const originalText = btn.textContent;
-            btn.disabled = true;
-            btn.innerHTML = UI.statusGenerating + '... <span class="loading"></span>';
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = UI.statusGenerating + '... <span class="loading loading-inline"></span>';
+            }
 
             try {
+                if (!beginPackBatch([jobId])) return;
                 const response = await fetch(\`/api/generate/\${jobId}\`, {
                     method: 'POST'
                 });
 
                 const result = await response.json();
-                
+
                 if (response.ok) {
                     showMessage('✓ ' + UI.msgGenerateStarted, 'info');
-                    setTimeout(refreshList, 2000);
                 } else {
                     showMessage('✗ ' + UI.msgError + result.error, 'error');
+                    clearPackBatchStatus(true);
                 }
             } catch (error) {
                 showMessage('✗ ' + UI.msgError + error.message, 'error');
-            } finally {
-                btn.disabled = false;
-                btn.textContent = originalText;
+                clearPackBatchStatus(true);
             }
         }
 
         async function generateAll() {
+            if (isGenerationLocked()) {
+                showMessage(packBatchRunning ? UI.batchBusyHint : UI.regenBusyHint, 'info');
+                return;
+            }
             const btn = document.getElementById('generateAllBtn');
-            const originalText = btn.textContent;
-            
-            btn.disabled = true;
-            btn.innerHTML = UI.statusGenerating + '... <span class="loading"></span>';
 
             try {
+                const listRes = await fetch('/api/jobs');
+                const jobs = await listRes.json();
+                const incomplete = (jobs || []).filter(function(j) { return !j.packComplete; }).map(function(j) { return j.id; });
+                if (!incomplete.length) {
+                    showMessage('✓ ' + UI.statusFinished, 'info');
+                    return;
+                }
+                if (!beginPackBatch(incomplete)) return;
+                if (btn) btn.innerHTML = UI.statusGenerating + '... <span class="loading loading-inline"></span>';
+
                 const response = await fetch('/api/generate-all', {
                     method: 'POST'
                 });
 
                 const result = await response.json();
-                
+
                 if (response.ok) {
                     showMessage('✓ ' + UI.msgGenerateStarted, 'info');
-                    setTimeout(refreshList, 2000);
                 } else {
                     showMessage('✗ ' + UI.msgError + result.error, 'error');
+                    clearPackBatchStatus(true);
                 }
             } catch (error) {
                 showMessage('✗ ' + UI.msgError + error.message, 'error');
-            } finally {
-                btn.disabled = false;
-                btn.textContent = originalText;
+                clearPackBatchStatus(true);
             }
         }
 
@@ -1602,6 +2415,7 @@ function buildHtml(lang: Locale): string {
                 
                 if (response.ok) {
                     showMessage('✓ ' + UI.msgCleared, 'success');
+                    clearPackBatchStatus(true);
                     setTimeout(refreshList, 1000);
                 } else {
                     showMessage('✗ ' + UI.msgError + result.error, 'error');
@@ -1778,6 +2592,8 @@ function buildHtml(lang: Locale): string {
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error || '');
                 showMessage('✓ ' + UI.archiveSuccess + (data.archived || 0) + UI.archiveSuccessSuffix, 'success');
+                celebrateConfetti();
+                await renderApplyCounter();
                 refreshList();
             } catch (e) {
                 showMessage('✗ ' + e.message, 'error');
@@ -1805,7 +2621,8 @@ function buildHtml(lang: Locale): string {
   let out = html
     .replace(/\{\{langEnActive\}\}/g, lang === 'en' ? 'active' : '')
     .replace(/\{\{langZhActive\}\}/g, lang === 'zh' ? 'active' : '');
-  return out.replace(/\{\{(\w+)\}\}/g, (_, k) => (s as Record<string, string>)[k] ?? k);
+  const templateVars = { ...s, dailyThemeName };
+  return out.replace(/\{\{(\w+)\}\}/g, (_, k) => (templateVars as Record<string, string>)[k] ?? k);
 }
 
 // API: 获取所有 JD 列表
@@ -1817,14 +2634,83 @@ app.get('/api/jobs', (req, res) => {
   }
 });
 
+app.get('/api/jobs/:jobId', (req, res) => {
+  try {
+    const { jobId } = req.params;
+    const inputs = pack.loadJobInputs(jobId);
+    const view = pack.listJobs().find((j) => j.id === jobId);
+    const inFlight = !!(
+      view?.progress ||
+      (view?.status?.steps &&
+        Object.values(view.status.steps).some((s) => s === 'in_progress'))
+    );
+    res.json({
+      jobId,
+      jd: inputs.jd,
+      companyInfo: inputs.companyInfo,
+      applicationTrack: inputs.applicationTrack,
+      hasGenerationOutputs: view?.hasGenerationOutputs ?? false,
+      inFlight,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    if (/not found|missing/i.test(message)) {
+      return res.status(404).json({ error: message });
+    }
+    res.status(500).json({ error: message });
+  }
+});
+
+app.put('/api/jobs/:jobId', (req, res) => {
+  try {
+    const { jobId } = req.params;
+    const { jd, companyInfo, applicationTrack } = req.body ?? {};
+    if (
+      applicationTrack != null &&
+      applicationTrack !== '' &&
+      !(TRACK_IDS as readonly string[]).includes(applicationTrack)
+    ) {
+      return res.status(400).json({
+        error: `applicationTrack must be one of: ${TRACK_IDS.join(', ')}`,
+      });
+    }
+    const result = pack.editJob(jobId, {
+      jd: typeof jd === 'string' ? jd : '',
+      companyInfo: typeof companyInfo === 'string' ? companyInfo : '',
+      applicationTrack: (applicationTrack as TrackId) || 'software-engineering',
+    });
+    res.json({ success: true, ...result });
+  } catch (error) {
+    if (error instanceof JobNotFoundError) {
+      return res.status(404).json({ error: error.message });
+    }
+    if (error instanceof JobEditBlockedError) {
+      return res.status(409).json({ error: error.message });
+    }
+    res.status(500).json({
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
 // API: 添加 job（公司信息 + JD 两个独立输入）
 app.post('/api/ingest', (req, res) => {
   try {
-    const { jd, companyInfo } = req.body;
+    const { jd, companyInfo, applicationTrack } = req.body;
 
     if (!jd || !jd.trim()) {
       return res.status(400).json({ error: 'Job description (jd) is required' });
     }
+
+    if (
+      !applicationTrack ||
+      !(TRACK_IDS as readonly string[]).includes(applicationTrack)
+    ) {
+      return res.status(400).json({
+        error: `applicationTrack must be one of: ${TRACK_IDS.join(', ')}`,
+      });
+    }
+    const trackId = applicationTrack as TrackId;
 
     const jdText = jd.trim();
     const companyText =
@@ -1835,11 +2721,13 @@ app.post('/api/ingest', (req, res) => {
     pack.saveJobInputs(jobId, {
       jd: jdText,
       companyInfo: companyText,
+      applicationTrack: trackId,
     });
 
     res.json({
       success: true,
       jobId,
+      applicationTrack: trackId,
       message: `Job saved (JD + ${companyText ? 'company info' : 'no company info'})`,
     });
   } catch (error) {
@@ -2016,6 +2904,20 @@ app.post('/api/archive', (req, res) => {
   }
 });
 
+// 单个 job 归档（计一次 Application Submission）
+app.post('/api/archive/:jobId', (req, res) => {
+  try {
+    const { jobId } = req.params;
+    if (!jobId || jobId === 'restore') {
+      return res.status(400).json({ error: 'Invalid jobId' });
+    }
+    archiveJob(jobId);
+    res.json({ success: true, jobId });
+  } catch (error) {
+    res.status(404).json({ error: error instanceof Error ? error.message : 'Unknown error' });
+  }
+});
+
 // 返回工作区（从存档恢复一个 job）
 app.post('/api/archive/:jobId/restore', (req, res) => {
   try {
@@ -2027,32 +2929,10 @@ app.post('/api/archive/:jobId/restore', (req, res) => {
   }
 });
 
-// API: active Application Track (track.yaml is source of truth)
-app.get('/api/track', (req, res) => {
+// 投递进度：今日数 / 连续天数 / 热度图（Submission Ledger 投影）
+app.get('/api/submissions/stats', (req, res) => {
   try {
-    res.json({
-      activeTrack: getActiveTrackId(),
-      tracks: TRACK_IDS.map((id) => ({ id })),
-    });
-  } catch (error) {
-    res.status(500).json({ error: error instanceof Error ? error.message : 'Unknown error' });
-  }
-});
-
-app.put('/api/track', (req, res) => {
-  try {
-    const activeTrack = req.body?.activeTrack;
-    if (!activeTrack || !(TRACK_IDS as readonly string[]).includes(activeTrack)) {
-      return res.status(400).json({
-        error: `activeTrack must be one of: ${TRACK_IDS.join(', ')}`,
-      });
-    }
-    const id = setActiveTrackId(activeTrack as TrackId);
-    res.json({
-      success: true,
-      activeTrack: id,
-      templatesRoot: pack.templatesRoot,
-    });
+    res.json(getSubmissionStats(process.cwd()));
   } catch (error) {
     res.status(500).json({ error: error instanceof Error ? error.message : 'Unknown error' });
   }

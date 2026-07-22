@@ -20,11 +20,36 @@ describe('Application Pack persistence', () => {
     pack.saveJobInputs('job-1', {
       companyInfo: 'Acme robotics',
       jd: 'Build APIs for warehouse robots',
+      applicationTrack: 'software-engineering',
     });
 
     expect(pack.loadJobInputs('job-1')).toEqual({
       companyInfo: 'Acme robotics',
       jd: 'Build APIs for warehouse robots',
+      applicationTrack: 'software-engineering',
+    });
+  });
+
+  it('persists Application Track binding on the Job and allows changing it via save', () => {
+    const pack = createApplicationPackModule({ workspaceRoot: root });
+    pack.saveJobInputs('job-track', {
+      companyInfo: '',
+      jd: 'IT helpdesk role',
+      applicationTrack: 'it-support',
+    });
+
+    expect(pack.loadJobInputs('job-track').applicationTrack).toBe('it-support');
+
+    pack.saveJobInputs('job-track', {
+      companyInfo: '',
+      jd: 'IT helpdesk role updated',
+      applicationTrack: 'software-engineering',
+    });
+
+    expect(pack.loadJobInputs('job-track')).toEqual({
+      companyInfo: '',
+      jd: 'IT helpdesk role updated',
+      applicationTrack: 'software-engineering',
     });
   });
 
@@ -33,6 +58,7 @@ describe('Application Pack persistence', () => {
     pack.saveJobInputs('job-2', {
       companyInfo: 'search keywords only',
       jd: 'Senior engineer JD',
+      applicationTrack: 'software-engineering',
     });
     pack.writeArtifacts('job-2', {
       companyProfile: 'Generated company research about Acme',
@@ -50,7 +76,11 @@ describe('Application Pack persistence', () => {
 
   it('reports missing pack when no outputs exist', () => {
     const pack = createApplicationPackModule({ workspaceRoot: root });
-    pack.saveJobInputs('job-3', { companyInfo: '', jd: 'Only JD' });
+    pack.saveJobInputs('job-3', {
+      companyInfo: '',
+      jd: 'Only JD',
+      applicationTrack: 'software-engineering',
+    });
 
     const result = pack.readPack('job-3');
     expect(result.exists).toBe(false);

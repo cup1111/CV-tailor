@@ -15,15 +15,17 @@ describe('Application Pack job view', () => {
     rmSync(root, { recursive: true, force: true });
   });
 
-  it('lists jobs with title, hasCompanyInfo, status, and packComplete', () => {
+  it('lists jobs with title, hasCompanyInfo, status, packComplete, and bound Track', () => {
     const pack = createApplicationPackModule({ workspaceRoot: root });
     pack.saveJobInputs('100', {
       companyInfo: 'Acme',
       jd: 'Senior backend engineer for robotics platform',
+      applicationTrack: 'software-engineering',
     });
     pack.saveJobInputs('200', {
       companyInfo: '',
       jd: 'Frontend role only',
+      applicationTrack: 'it-support',
     });
 
     const jobs = pack.listJobs();
@@ -32,19 +34,28 @@ describe('Application Pack job view', () => {
     const withCompany = jobs.find((j) => j.id === '100')!;
     expect(withCompany.hasCompanyInfo).toBe(true);
     expect(withCompany.packComplete).toBe(false);
-    expect(withCompany.stale).toBe(false);
+    expect(withCompany.applicationTrack).toBe('software-engineering');
     expect(withCompany.title).toContain('Senior backend');
     expect(withCompany.progress).toBeUndefined();
+    expect(Object.keys(withCompany)).not.toContain('stale');
 
     const jdOnly = jobs.find((j) => j.id === '200')!;
     expect(jdOnly.hasCompanyInfo).toBe(false);
-    expect(jdOnly.stale).toBe(false);
+    expect(jdOnly.applicationTrack).toBe('it-support');
   });
 
   it('listIncompleteJobIds skips packs whose review step is complete', () => {
     const pack = createApplicationPackModule({ workspaceRoot: root });
-    pack.saveJobInputs('a', { companyInfo: '', jd: 'Incomplete job' });
-    pack.saveJobInputs('b', { companyInfo: '', jd: 'Complete job' });
+    pack.saveJobInputs('a', {
+      companyInfo: '',
+      jd: 'Incomplete job',
+      applicationTrack: 'software-engineering',
+    });
+    pack.saveJobInputs('b', {
+      companyInfo: '',
+      jd: 'Complete job',
+      applicationTrack: 'software-engineering',
+    });
     pack.writeArtifacts('b', {
       summary: 'S',
       experienceBullets: 'E',
@@ -78,7 +89,11 @@ describe('Application Pack job view', () => {
 
   it('readPack results use hasCompanyInfo not hasCompanyProfile', () => {
     const pack = createApplicationPackModule({ workspaceRoot: root });
-    pack.saveJobInputs('x', { companyInfo: 'Kw', jd: 'JD' });
+    pack.saveJobInputs('x', {
+      companyInfo: 'Kw',
+      jd: 'JD',
+      applicationTrack: 'software-engineering',
+    });
     pack.writeArtifacts('x', { companyProfile: 'Profile text', summary: 'S' });
     const result = pack.readPack('x');
     expect(result.hasCompanyInfo).toBe(true);

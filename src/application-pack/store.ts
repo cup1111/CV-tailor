@@ -13,10 +13,19 @@ import {
   type Status,
   type StepStatus,
 } from '../types/outputs.js';
+import { TRACK_IDS, type TrackId } from '../services/track.js';
 import type { ApplicationPack, JobInputs, PackTruncation } from './types.js';
 
 const COMPANY_MARKER = '---COMPANY---';
 const JD_MARKER = '---JD---';
+
+function parseTrackId(value: string): TrackId | null {
+  const trimmed = value.trim();
+  if ((TRACK_IDS as readonly string[]).includes(trimmed)) {
+    return trimmed as TrackId;
+  }
+  return null;
+}
 
 export type ArtifactWrite = {
   companyProfile?: string;
@@ -58,6 +67,14 @@ export class PackStore {
 
   saveJobInputs(jobId: string, inputs: JobInputs): void {
     this.ensureJobsDir();
+    if (!(TRACK_IDS as readonly string[]).includes(inputs.applicationTrack)) {
+      throw new Error(
+        `Invalid Application Track: ${inputs.applicationTrack}. ` +
+          `Must be one of ${TRACK_IDS.join(', ')}`
+      );
+    }
+
+    const trackPath = join(this.jobsDir(), `${jobId}.track.txt`);
     const jdPath = join(this.jobsDir(), `${jobId}.md`);
     const urlMatch = inputs.jd.match(/https?:\/\/[^\s]+/);
     const url = urlMatch ? urlMatch[0] : '';
@@ -73,11 +90,13 @@ export class PackStore {
     } else if (existsSync(companyPath)) {
       unlinkSync(companyPath);
     }
+    writeFileSync(trackPath, `${inputs.applicationTrack}\n`, 'utf-8');
   }
 
   loadJobInputs(jobId: string): JobInputs {
     const jdPath = join(this.jobsDir(), `${jobId}.md`);
     const companyPath = join(this.jobsDir(), `${jobId}.company.txt`);
+    const trackPath = join(this.jobsDir(), `${jobId}.track.txt`);
     if (!existsSync(jdPath)) {
       throw new Error(`Job not found: ${jdPath}`);
     }
@@ -101,7 +120,19 @@ export class PackStore {
       }
     }
 
-    return { companyInfo, jd: jdText };
+    if (!existsSync(trackPath)) {
+      throw new Error(
+        `Application Track binding missing for job "${jobId}". Run Track migration.`
+      );
+    }
+    const applicationTrack = parseTrackId(readFileSync(trackPath, 'utf-8'));
+    if (applicationTrack == null) {
+      throw new Error(
+        `Invalid Application Track binding for job "${jobId}" in ${trackPath}`
+      );
+    }
+
+    return { companyInfo, jd: jdText, applicationTrack };
   }
 
   listJobIds(): string[] {
@@ -199,11 +230,27 @@ export class PackStore {
     };
   }
 
+  hasGenerationOutputs(jobId: string): boolean {
+    const dir = this.outDir(jobId);
+    if (!existsSync(dir)) return false;
+    return readdirSync(dir).length > 0;
+  }
+
+  clearJobOutputs(jobId: string): void {
+    const dir = this.outDir(jobId);
+    if (existsSync(dir)) {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
   deleteJob(jobId: string): void {
     const jdPath = join(this.jobsDir(), `${jobId}.md`);
     const companyPath = join(this.jobsDir(), `${jobId}.company.txt`);
+    const trackPath = join(this.jobsDir(), `${jobId}.track.txt`);
     if (existsSync(jdPath)) unlinkSync(jdPath);
     if (existsSync(companyPath)) unlinkSync(companyPath);
+    if (existsSync(trackPath)) unlinkSync(trackPath);
+    this.clearJobOutputs(jobId);
   }
 
   setProgress(jobId: string, phase: string | null): void {
@@ -231,7 +278,7 @@ export class PackStore {
     const outRoot = join(this.workspaceRoot, 'out');
     if (existsSync(jobs)) {
       for (const file of readdirSync(jobs)) {
-        if (file.endsWith('.md') || file.endsWith('.company.txt')) {
+        if (file.endsWith('.md') || file.endsWith('.company.txt') || file.endsWith('.track.txt')) {
           unlinkSync(join(jobs, file));
         }
       }

@@ -1,6 +1,6 @@
-Prompt Templates moved under Application Tracks:
+Prompt Templates live under Application Tracks:
 
 - `tracks/software-engineering/templates/`
 - `tracks/it-support/templates/`
 
-Active Track is selected in `track.yaml` (`activeTrack`).
+Each Job binds to one Application Track when the Job Description is saved (ADR-0003).
