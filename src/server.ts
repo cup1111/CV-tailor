@@ -10,7 +10,6 @@ import { OpenAIService } from './services/openai.js';
 import { createApplicationPackModule } from './application-pack/index.js';
 import { UI_STRINGS, type Locale } from './i18n.js';
 import {
-  DEFAULT_APPLICATION_TRACK,
   TRACK_IDS,
   type TrackId,
 } from './services/track.js';
@@ -678,39 +677,9 @@ function buildHtml(lang: Locale): string {
             border-bottom: 2px solid #007bff;
             margin-bottom: -2px;
         }
-        .track-switcher {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            margin-left: auto;
-            padding: 8px 0;
-            font-size: 14px;
-            color: #555;
-        }
-        .track-switcher label {
-            font-weight: 600;
-            white-space: nowrap;
-        }
-        .track-switcher select {
-            padding: 6px 10px;
-            border: 1px solid #ccc;
-            border-radius: 4px;
-            background: #fff;
-            font-size: 14px;
-            max-width: 220px;
-        }
-        .track-switcher .track-hint {
-            display: none;
-            font-size: 12px;
-            color: #888;
-            max-width: 280px;
-        }
-        @media (min-width: 900px) {
-            .track-switcher .track-hint { display: inline; }
-        }
         .lang-switcher {
             padding: 12px 0;
-            margin-left: 16px;
+            margin-left: auto;
             white-space: nowrap;
         }
         .view-panel { display: none; }
@@ -829,7 +798,7 @@ function buildHtml(lang: Locale): string {
             <form id="jdForm">
                 <div class="form-group">
                     <label for="applicationTrack">{{trackLabel}}</label>
-                    <select id="applicationTrack" name="applicationTrack">
+                    <select id="applicationTrack" name="applicationTrack" required>
                         <option value="software-engineering" selected>{{trackSoftwareEngineering}}</option>
                         <option value="it-support">{{trackItSupport}}</option>
                     </select>
@@ -1796,11 +1765,15 @@ app.post('/api/ingest', (req, res) => {
       return res.status(400).json({ error: 'Job description (jd) is required' });
     }
 
-    const trackId =
-      typeof applicationTrack === 'string' &&
-      (TRACK_IDS as readonly string[]).includes(applicationTrack)
-        ? (applicationTrack as TrackId)
-        : DEFAULT_APPLICATION_TRACK;
+    if (
+      !applicationTrack ||
+      !(TRACK_IDS as readonly string[]).includes(applicationTrack)
+    ) {
+      return res.status(400).json({
+        error: `applicationTrack must be one of: ${TRACK_IDS.join(', ')}`,
+      });
+    }
+    const trackId = applicationTrack as TrackId;
 
     const jdText = jd.trim();
     const companyText =

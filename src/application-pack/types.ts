@@ -83,5 +83,5 @@ export type JobView = {
   /**
    * Bound Application Track for this Job (sole authority for generation).
    */
-  applicationTrack: string;
+  applicationTrack: TrackId;
 };

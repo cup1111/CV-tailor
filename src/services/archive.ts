@@ -9,6 +9,7 @@ import {
   statSync,
 } from 'fs';
 import { join } from 'path';
+import { migrateJobTrackBindings } from './track.js';
 
 const ARCHIVE_DIR = 'archive';
 const JOBS_DIR = 'jobs';
@@ -288,6 +289,8 @@ export function restoreJob(jobId: string): void {
   } catch {
     // ignore
   }
+  // Legacy archives may lack track.txt; bind from pack marker / track.yaml / default.
+  migrateJobTrackBindings(process.cwd());
 }
 
 /**
