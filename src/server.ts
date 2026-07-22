@@ -9,6 +9,7 @@ import {
 import { OpenAIService } from './services/openai.js';
 import { createApplicationPackModule } from './application-pack/index.js';
 import { UI_STRINGS, type Locale } from './i18n.js';
+import { getDailyThemeName, renderDailyThemeCss } from './ui/daily-theme.js';
 import {
   TRACK_IDS,
   type TrackId,
@@ -26,6 +27,8 @@ app.use(express.raw({ type: 'text/plain', limit: '10mb' }));
 function buildHtml(lang: Locale): string {
   const s = UI_STRINGS[lang];
   const langAttr = lang === 'zh' ? 'zh-CN' : 'en';
+  const dailyThemeCss = renderDailyThemeCss(new Date());
+  const dailyThemeName = getDailyThemeName(lang, new Date());
   const html = `
 <!DOCTYPE html>
 <html lang="${langAttr}">
@@ -34,6 +37,7 @@ function buildHtml(lang: Locale): string {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{pageTitle}}</title>
     <style>
+        ${dailyThemeCss}
         * {
             margin: 0;
             padding: 0;
@@ -41,64 +45,93 @@ function buildHtml(lang: Locale): string {
         }
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background-color: #f5f5f5;
+            background-color: var(--theme-page-bg);
+            background-image: linear-gradient(
+                165deg,
+                var(--theme-page-bg) 0%,
+                var(--theme-page-bg-end) 52%,
+                var(--theme-page-bg-accent) 100%
+            );
+            background-attachment: fixed;
+            min-height: 100vh;
             padding: 20px;
+            transition: background-color 0.4s ease, background-image 0.4s ease;
         }
         .container {
             max-width: 1200px;
             margin: 0 auto;
         }
         .header {
-            background: white;
+            background: var(--theme-surface);
             padding: 30px;
             border-radius: 8px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
             margin-bottom: 20px;
         }
         h1 {
-            color: #333;
+            color: var(--theme-text-primary);
             margin-bottom: 10px;
         }
         .section {
-            background: white;
+            background: var(--theme-surface);
             padding: 30px;
             border-radius: 8px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
             margin-bottom: 20px;
         }
         .section h2 {
-            color: #333;
+            color: var(--theme-text-primary);
             margin-bottom: 20px;
             font-size: 20px;
+        }
+        .daily-theme-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 10px;
+            padding: 6px 10px;
+            border-radius: 999px;
+            font-size: 12px;
+            color: var(--theme-text-muted);
+            background: var(--theme-surface-subtle);
+            border: 1px solid var(--theme-border);
+        }
+        .daily-theme-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--theme-primary);
+            box-shadow: 0 0 0 2px var(--theme-primary-light);
+            flex-shrink: 0;
         }
         .quick-start {
             margin-bottom: 20px;
             padding: 14px 16px;
-            border: 1px solid #dbeafe;
+            border: 1px solid var(--theme-panel-border);
             border-radius: 8px;
-            background: #f8fbff;
+            background: var(--theme-panel-bg);
         }
         .quick-start h3 {
-            color: #1f4b99;
+            color: var(--theme-panel-title);
             font-size: 15px;
             margin-bottom: 8px;
         }
         .quick-start ol {
             margin-left: 20px;
-            color: #334155;
+            color: var(--theme-text-secondary);
             line-height: 1.6;
             font-size: 14px;
         }
         .sequence {
             margin: 0 0 20px;
             padding: 16px;
-            border: 1px solid #e2e8f0;
+            border: 1px solid var(--theme-border);
             border-radius: 10px;
-            background: #ffffff;
+            background: var(--theme-surface);
         }
         .sequence h3 {
             margin-bottom: 14px;
-            color: #1e293b;
+            color: var(--theme-text-heading);
             font-size: 16px;
         }
         .sequence-grid {
@@ -112,14 +145,14 @@ function buildHtml(lang: Locale): string {
             align-items: flex-start;
             padding: 12px;
             border-radius: 8px;
-            background: #f8fafc;
-            border: 1px solid #e2e8f0;
+            background: var(--theme-surface-subtle);
+            border: 1px solid var(--theme-border);
         }
         .sequence-index {
             width: 26px;
             height: 26px;
             border-radius: 50%;
-            background: #2563eb;
+            background: var(--theme-primary);
             color: #fff;
             display: inline-flex;
             align-items: center;
@@ -131,62 +164,62 @@ function buildHtml(lang: Locale): string {
         .sequence-item h4 {
             font-size: 14px;
             margin-bottom: 4px;
-            color: #1e293b;
+            color: var(--theme-text-heading);
         }
         .sequence-item p {
             font-size: 13px;
-            color: #475569;
+            color: var(--theme-text-subtle);
             line-height: 1.5;
         }
         .motivation-card {
             margin-bottom: 20px;
             padding: 16px;
             border-radius: 10px;
-            border: 1px solid #fde68a;
-            background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
+            border: 1px solid var(--theme-warm-border);
+            background: linear-gradient(135deg, var(--theme-warm-bg-from) 0%, var(--theme-warm-bg-to) 100%);
         }
         .apply-counter {
             margin-bottom: 20px;
             padding: 14px 16px;
             border-radius: 10px;
-            border: 1px solid #bae6fd;
-            background: linear-gradient(135deg, #f0f9ff 0%, #ecfeff 100%);
+            border: 1px solid var(--theme-stats-border);
+            background: linear-gradient(135deg, var(--theme-stats-bg-from) 0%, var(--theme-stats-bg-to) 100%);
         }
         .apply-counter-title {
             font-size: 15px;
             font-weight: 700;
-            color: #0c4a6e;
+            color: var(--theme-stats-title);
             margin-bottom: 4px;
         }
         .apply-counter-desc {
             font-size: 13px;
-            color: #0369a1;
+            color: var(--theme-stats-text);
             margin-bottom: 8px;
         }
         .apply-counter-value {
             font-size: 30px;
             font-weight: 800;
-            color: #075985;
+            color: var(--theme-stats-value);
             line-height: 1.1;
         }
         .apply-counter-value span {
             font-size: 14px;
             font-weight: 600;
             margin-left: 6px;
-            color: #0284c7;
+            color: var(--theme-stats-accent);
         }
         .apply-streak {
             margin-top: 8px;
             font-size: 14px;
             font-weight: 600;
-            color: #0369a1;
+            color: var(--theme-stats-text);
         }
         .star-buddy {
             margin-bottom: 20px;
             padding: 16px;
             border-radius: 12px;
-            border: 1px solid #fbcfe8;
-            background: linear-gradient(145deg, #fff7ed 0%, #fdf2f8 45%, #eef2ff 100%);
+            border: 1px solid var(--theme-star-border);
+            background: linear-gradient(145deg, var(--theme-star-bg-1) 0%, var(--theme-star-bg-2) 45%, var(--theme-star-bg-3) 100%);
             position: relative;
             overflow: hidden;
         }
@@ -212,12 +245,12 @@ function buildHtml(lang: Locale): string {
         .star-buddy-title {
             font-size: 16px;
             font-weight: 700;
-            color: #7c2d12;
+            color: var(--theme-star-title);
             margin-bottom: 4px;
         }
         .star-buddy-subtitle {
             font-size: 13px;
-            color: #9a3412;
+            color: var(--theme-star-subtitle);
             margin-bottom: 10px;
         }
         .star-buddy-main {
@@ -239,7 +272,7 @@ function buildHtml(lang: Locale): string {
             flex-shrink: 0;
         }
         .star-detail {
-            color: #6b21a8;
+            color: var(--theme-star-detail);
             font-size: 14px;
             line-height: 1.55;
             font-weight: 600;
@@ -247,17 +280,17 @@ function buildHtml(lang: Locale): string {
         .motivation-title {
             font-size: 16px;
             font-weight: 600;
-            color: #92400e;
+            color: var(--theme-warm-title);
             margin-bottom: 6px;
         }
         .motivation-subtitle {
             font-size: 13px;
-            color: #a16207;
+            color: var(--theme-warm-subtitle);
             margin-bottom: 10px;
         }
         .motivation-quote {
             font-size: 14px;
-            color: #78350f;
+            color: var(--theme-warm-quote);
             margin-bottom: 12px;
             line-height: 1.6;
             font-weight: 500;
@@ -272,17 +305,17 @@ function buildHtml(lang: Locale): string {
             margin-top: 6px;
             gap: 8px;
             font-size: 12px;
-            color: #64748b;
+            color: var(--theme-text-muted);
         }
         .char-counter {
-            color: #475569;
+            color: var(--theme-text-subtle);
             white-space: nowrap;
         }
         label {
             display: block;
             margin-bottom: 5px;
             font-weight: 500;
-            color: #555;
+            color: var(--theme-text-label);
         }
         input[type="text"],
         input[type="url"],
@@ -290,7 +323,7 @@ function buildHtml(lang: Locale): string {
         input[type="file"] {
             width: 100%;
             padding: 10px;
-            border: 1px solid #ddd;
+            border: 1px solid var(--theme-border-light);
             border-radius: 4px;
             font-size: 14px;
             font-family: inherit;
@@ -300,7 +333,7 @@ function buildHtml(lang: Locale): string {
             resize: vertical;
         }
         button {
-            background-color: #007bff;
+            background-color: var(--theme-primary);
             color: white;
             padding: 12px 24px;
             border: none;
@@ -311,7 +344,7 @@ function buildHtml(lang: Locale): string {
             margin-bottom: 10px;
         }
         button:hover {
-            background-color: #0056b3;
+            background-color: var(--theme-primary-hover);
         }
         button.danger {
             background-color: #dc3545;
@@ -330,11 +363,11 @@ function buildHtml(lang: Locale): string {
             cursor: not-allowed;
         }
         button.secondary {
-            background: #eef2f7;
-            color: #334155;
+            background: var(--theme-btn-secondary-bg);
+            color: var(--theme-text-secondary);
         }
         button.secondary:hover {
-            background: #dde5ef;
+            background: var(--theme-btn-secondary-hover);
         }
         .message {
             padding: 15px;
@@ -350,39 +383,39 @@ function buildHtml(lang: Locale): string {
             color: #721c24;
         }
         .info {
-            background-color: #d1ecf1;
-            color: #0c5460;
+            background-color: var(--theme-info-bg);
+            color: var(--theme-info-text);
         }
         .jd-list {
             display: grid;
             gap: 15px;
         }
         .empty-state {
-            border: 1px dashed #cbd5e1;
+            border: 1px dashed var(--theme-border-muted);
             border-radius: 8px;
-            background: #f8fafc;
+            background: var(--theme-surface-subtle);
             padding: 24px;
             text-align: center;
-            color: #475569;
+            color: var(--theme-text-subtle);
         }
         .empty-state h3 {
-            color: #1e293b;
+            color: var(--theme-text-heading);
             margin-bottom: 8px;
             font-size: 18px;
         }
         .jd-item {
-            border: 1px solid #ddd;
+            border: 1px solid var(--theme-border-light);
             border-radius: 4px;
             padding: 15px;
-            background: #f9f9f9;
+            background: var(--theme-surface-subtle);
         }
         .jd-item.has-company-profile {
             border-left: 4px solid #28a745;
-            background: #f0f9f4;
+            background: var(--theme-surface-muted);
         }
         .jd-item.jd-only {
             border-left: 4px solid #6c757d;
-            background: #f8f9fa;
+            background: var(--theme-surface-subtle);
         }
         .jd-mode-badge {
             font-size: 11px;
@@ -427,11 +460,11 @@ function buildHtml(lang: Locale): string {
         }
         .jd-item-title {
             font-weight: 600;
-            color: #333;
+            color: var(--theme-text-primary);
         }
         .jd-item-id {
             font-size: 12px;
-            color: #666;
+            color: var(--theme-text-muted-alt);
             font-family: monospace;
         }
         .jd-item-actions {
@@ -441,8 +474,8 @@ function buildHtml(lang: Locale): string {
         .jd-item-content {
             margin-top: 10px;
             padding: 10px;
-            background: #fff;
-            border: 1px solid #ddd;
+            background: var(--theme-surface);
+            border: 1px solid var(--theme-border-light);
             border-radius: 4px;
             white-space: pre-wrap;
             word-wrap: break-word;
@@ -459,12 +492,12 @@ function buildHtml(lang: Locale): string {
         }
         .regenerate-progress .regenerate-label {
             font-size: 12px;
-            color: #666;
+            color: var(--theme-text-muted-alt);
             margin-bottom: 4px;
         }
         .regenerate-progress .regenerate-bar {
             height: 6px;
-            background: #e9ecef;
+            background: var(--theme-border);
             border-radius: 3px;
             overflow: hidden;
         }
@@ -494,7 +527,7 @@ function buildHtml(lang: Locale): string {
             color: #856404;
         }
         .status-in-progress {
-            background-color: #17a2b8;
+            background-color: var(--theme-status-progress);
             color: #fff;
         }
         .status-completed {
@@ -502,8 +535,8 @@ function buildHtml(lang: Locale): string {
             color: #fff;
         }
         .status-finished {
-            background-color: #b3d9ff;
-            color: #004085;
+            background-color: var(--theme-status-finished-bg);
+            color: var(--theme-status-finished-text);
         }
         .status-failed {
             background-color: #dc3545;
@@ -513,9 +546,9 @@ function buildHtml(lang: Locale): string {
             display: none;
             margin-top: 15px;
             padding: 15px;
-            background: white;
+            background: var(--theme-surface);
             border-radius: 4px;
-            border: 1px solid #ddd;
+            border: 1px solid var(--theme-border-light);
         }
         .results-panel.active {
             display: block;
@@ -524,7 +557,7 @@ function buildHtml(lang: Locale): string {
             margin-bottom: 20px;
         }
         .result-section h4 {
-            color: #333;
+            color: var(--theme-text-primary);
             margin-bottom: 10px;
             font-size: 16px;
         }
@@ -532,7 +565,7 @@ function buildHtml(lang: Locale): string {
         .result-section.result-subsection h4 { font-size: 14px; }
         .result-content-wrap {
             position: relative;
-            background: #f9f9f9;
+            background: var(--theme-surface-subtle);
             border-radius: 4px;
             padding: 15px;
         }
@@ -542,8 +575,8 @@ function buildHtml(lang: Locale): string {
             right: 8px;
             padding: 4px 10px;
             font-size: 12px;
-            border: 1px solid #ddd;
-            background: #fff;
+            border: 1px solid var(--theme-border-light);
+            background: var(--theme-surface);
             border-radius: 4px;
             cursor: pointer;
             opacity: 0.85;
@@ -551,10 +584,10 @@ function buildHtml(lang: Locale): string {
         }
         .result-content-wrap .copy-btn:hover {
             opacity: 1;
-            background: #f0f0f0;
+            background: var(--theme-surface-muted);
         }
         .result-content {
-            background: #f9f9f9;
+            background: var(--theme-surface-subtle);
             padding: 15px;
             border-radius: 4px;
             white-space: pre-wrap;
@@ -585,7 +618,7 @@ function buildHtml(lang: Locale): string {
             z-index: 1000;
         }
         .modal-overlay .modal {
-            background: #fff;
+            background: var(--theme-surface);
             border-radius: 8px;
             max-width: 640px;
             width: 90%;
@@ -614,8 +647,8 @@ function buildHtml(lang: Locale): string {
             display: inline-block;
             width: 16px;
             height: 16px;
-            border: 2px solid #f3f3f3;
-            border-top: 2px solid #007bff;
+            border: 2px solid var(--theme-border);
+            border-top: 2px solid var(--theme-primary);
             border-radius: 50%;
             animation: spin 1s linear infinite;
             margin-left: 10px;
@@ -663,18 +696,18 @@ function buildHtml(lang: Locale): string {
             display: flex;
             gap: 0;
             margin-bottom: 20px;
-            border-bottom: 2px solid #dee2e6;
+            border-bottom: 2px solid var(--theme-nav-border);
         }
         .top-nav a {
             padding: 12px 24px;
             text-decoration: none;
-            color: #495057;
+            color: var(--theme-nav-text);
             font-weight: 500;
         }
-        .top-nav a:hover { color: #007bff; }
+        .top-nav a:hover { color: var(--theme-primary); }
         .top-nav a.active {
-            color: #007bff;
-            border-bottom: 2px solid #007bff;
+            color: var(--theme-primary);
+            border-bottom: 2px solid var(--theme-primary);
             margin-bottom: -2px;
         }
         .lang-switcher {
@@ -716,30 +749,30 @@ function buildHtml(lang: Locale): string {
         .archive-group-date {
             font-size: 18px;
             font-weight: 600;
-            color: #333;
+            color: var(--theme-text-primary);
             margin-bottom: 12px;
             padding-bottom: 6px;
-            border-bottom: 1px solid #eee;
+            border-bottom: 1px solid var(--theme-border-light);
         }
         .archive-job-item {
             display: flex;
             align-items: center;
             justify-content: space-between;
             padding: 12px 16px;
-            background: #fff;
-            border: 1px solid #ddd;
+            background: var(--theme-surface);
+            border: 1px solid var(--theme-border-light);
             border-radius: 4px;
             margin-bottom: 8px;
         }
-        .archive-job-item:hover { background: #f8f9fa; }
+        .archive-job-item:hover { background: var(--theme-surface-subtle); }
         .archive-job-expand {
             margin-top: 12px;
             padding: 12px;
-            background: #f8f9fa;
+            background: var(--theme-surface-subtle);
             border-radius: 4px;
             font-size: 13px;
         }
-        .archive-job-expand h5 { margin: 12px 0 6px; color: #555; }
+        .archive-job-expand h5 { margin: 12px 0 6px; color: var(--theme-text-label); }
         .archive-job-expand pre { white-space: pre-wrap; word-break: break-word; max-height: 200px; overflow-y: auto; font-size: 12px; }
         .archive-load-more { margin-top: 16px; }
     </style>
@@ -757,6 +790,10 @@ function buildHtml(lang: Locale): string {
         <div class="header">
             <h1>📝 Resume Pack Generator</h1>
             <p>{{headerSubtitle}}</p>
+            <div class="daily-theme-badge" title="{{dailyThemeHint}}">
+                <span class="daily-theme-dot" aria-hidden="true"></span>
+                <span>{{dailyThemeLabel}} · {{dailyThemeName}}</span>
+            </div>
         </div>
 
         <div class="section">
@@ -868,7 +905,7 @@ function buildHtml(lang: Locale): string {
         <div id="archiveView" class="view-panel">
             <div class="section">
                 <h2>{{archiveTitle}}</h2>
-                <p style="color:#666;margin-bottom:16px;">{{archiveDesc}}</p>
+                <p class="text-muted" style="margin-bottom:16px;">{{archiveDesc}}</p>
                 <div class="archive-toolbar">
                     <input type="text" id="archiveSearch" placeholder="{{archiveSearchPlaceholder}}" onkeypress="if(event.key==='Enter')loadArchive(1)">
                     <button type="button" onclick="loadArchive(1)">{{archiveSearchBtn}}</button>
@@ -877,7 +914,7 @@ function buildHtml(lang: Locale): string {
                 <div id="archiveLoadMoreWrap" class="archive-load-more" style="display:none;">
                     <button type="button" id="archiveLoadMoreBtn" onclick="loadArchiveNext()">{{loadMore}}</button>
                 </div>
-                <div id="archiveEmpty" style="display:none;color:#666;padding:20px;">{{archiveEmpty}}</div>
+                <div id="archiveEmpty" class="text-muted" style="display:none;padding:20px;">{{archiveEmpty}}</div>
             </div>
         </div>
     </div>
@@ -886,7 +923,7 @@ function buildHtml(lang: Locale): string {
     <div id="regenerateModal" class="modal-overlay" style="display:none;">
         <div class="modal">
             <h3>{{regenerateModalTitle}}</h3>
-            <p style="color:#666;font-size:14px;margin-bottom:12px;">{{regenerateModalDesc}}</p>
+            <p class="text-muted" style="font-size:14px;margin-bottom:12px;">{{regenerateModalDesc}}</p>
             <textarea id="regenerateFeedback" placeholder="{{regeneratePlaceholder}}"></textarea>
             <div id="regenerateActions">
                 <button type="button" class="success" id="regenerateSubmitBtn" onclick="submitRegenerate()">{{regenerateSubmit}}</button>
@@ -894,7 +931,7 @@ function buildHtml(lang: Locale): string {
             </div>
             <div id="regenerateResult" style="display:none;margin-top:20px;">
                 <h4>{{regenerateUpdated}}</h4>
-                <p style="color:#666;margin-bottom:8px;">{{regenerateFeedbackLabel}}</p>
+                <p class="text-muted" style="margin-bottom:8px;">{{regenerateFeedbackLabel}}</p>
                 <div id="regenerateFeedbackBody" class="regenerate-feedback-md result-content"></div>
                 <button type="button" onclick="closeRegenerateModal()" style="margin-top:16px;">{{close}}</button>
             </div>
@@ -1008,10 +1045,22 @@ function buildHtml(lang: Locale): string {
             if (streakEl) streakEl.textContent = '🔥 ' + UI.streakLabel + ': ' + calcStreak(state.activeDates) + ' ' + UI.streakUnit;
         }
 
+        function themeConfettiColors() {
+            const root = getComputedStyle(document.documentElement);
+            return [
+                root.getPropertyValue('--theme-primary-muted').trim(),
+                root.getPropertyValue('--theme-star-detail').trim(),
+                root.getPropertyValue('--theme-stats-accent').trim(),
+                root.getPropertyValue('--theme-warm-title').trim(),
+                root.getPropertyValue('--theme-primary').trim(),
+            ].filter(Boolean);
+        }
+
         function celebrateConfetti() {
             const layer = document.getElementById('confettiLayer');
             if (!layer) return;
-            const colors = ['#60a5fa', '#f472b6', '#34d399', '#fbbf24', '#a78bfa'];
+            const colors = themeConfettiColors();
+            if (colors.length === 0) return;
             for (let i = 0; i < 42; i++) {
                 const piece = document.createElement('span');
                 piece.className = 'confetti';
@@ -1744,7 +1793,8 @@ function buildHtml(lang: Locale): string {
   let out = html
     .replace(/\{\{langEnActive\}\}/g, lang === 'en' ? 'active' : '')
     .replace(/\{\{langZhActive\}\}/g, lang === 'zh' ? 'active' : '');
-  return out.replace(/\{\{(\w+)\}\}/g, (_, k) => (s as Record<string, string>)[k] ?? k);
+  const templateVars = { ...s, dailyThemeName };
+  return out.replace(/\{\{(\w+)\}\}/g, (_, k) => (templateVars as Record<string, string>)[k] ?? k);
 }
 
 // API: 获取所有 JD 列表
