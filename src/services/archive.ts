@@ -10,6 +10,7 @@ import {
 } from 'fs';
 import { join } from 'path';
 import { migrateJobTrackBindings } from './track.js';
+import { recordSubmission } from './submission-ledger.js';
 
 const ARCHIVE_DIR = 'archive';
 const JOBS_DIR = 'jobs';
@@ -201,6 +202,8 @@ export function archiveJob(jobId: string): void {
     }
     rmSync(outJobDir, { recursive: true, force: true });
   }
+
+  recordSubmission(process.cwd(), jobId);
 }
 
 /**

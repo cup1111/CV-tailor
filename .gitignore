@@ -6,6 +6,7 @@ dist/
 out/
 jobs/*.md
 archive/
+submission-ledger.json
 jobs/
 profile.yaml
 tracks/*/profile.yaml
