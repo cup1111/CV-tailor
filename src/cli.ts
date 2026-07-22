@@ -4,6 +4,7 @@ import { Command } from 'commander';
 import dotenv from 'dotenv';
 import { ingestCommand } from './commands/ingest.js';
 import { generateCommand } from './commands/generate.js';
+import { exportCommand } from './commands/export.js';
 
 // 加载环境变量
 dotenv.config();
@@ -33,6 +34,20 @@ program
     await generateCommand({
       job: options.job,
       concurrency: options.concurrency ? parseInt(options.concurrency, 10) : undefined,
+    });
+  });
+
+program
+  .command('export')
+  .description('Resume Export: fill Pages Layout and write .pages + .pdf')
+  .requiredOption('-j, --job <jobId>', 'Job ID to export')
+  .option('-d, --directory <path>', 'One-off Export Directory override')
+  .option('--set-directory <path>', 'Persist workspace Export Directory default')
+  .action(async (options) => {
+    await exportCommand({
+      job: options.job,
+      directory: options.directory,
+      setDirectory: options.setDirectory,
     });
   });
 

@@ -14,6 +14,7 @@ import {
   JobEditBlockedError,
   JobNotFoundError,
 } from './application-pack/index.js';
+import { createPagesPort } from './services/pages-port.js';
 import { PACK_GENERATION_STEPS } from './application-pack/batch-progress.js';
 import { UI_STRINGS, type Locale } from './i18n.js';
 import { getDailyThemeName, renderDailyThemeCss } from './ui/daily-theme.js';
@@ -1700,6 +1701,9 @@ function buildHtml(lang: Locale): string {
             document.querySelectorAll('[id^="regen-btn-"]').forEach(function(btn) {
                 if (btn.style.display !== 'none') btn.disabled = disabled;
             });
+            document.querySelectorAll('[id^="export-btn-"]').forEach(function(btn) {
+                if (btn.style.display !== 'none') btn.disabled = disabled;
+            });
         }
 
         function syncGenerationLocks() {
@@ -1924,7 +1928,8 @@ function buildHtml(lang: Locale): string {
                                 \${editBtn}
                                 <button onclick="toggleJdContent('\${job.id}')">📄 \${UI.btnViewJd}</button>
                                 <button onclick="viewResults('\${job.id}')">📊 \${UI.btnViewResults}</button>
-                                <button type="button" onclick="openRegenerateModal('\${job.id}')" class="success" id="regen-btn-\${job.id}" style="display:\${status?.steps?.review === 'completed' && !progress ? 'inline-block' : 'none'}"\${genDisabled}>♻️ \${UI.btnRegenerate}</button>
+                                <button type="button" onclick="openRegenerateModal('\${job.id}')" class="success" id="regen-btn-\${job.id}" style="display:\${job.packComplete && !progress ? 'inline-block' : 'none'}"\${genDisabled}>♻️ \${UI.btnRegenerate}</button>
+                                <button type="button" onclick="exportResume('\${job.id}')" class="success" id="export-btn-\${job.id}" style="display:\${job.packComplete && !progress ? 'inline-block' : 'none'}"\${genDisabled}>📄 \${UI.btnExportResume}</button>
                                 <button type="button" class="success" onclick="archiveOneJob('\${job.id}')">🗂️ \${UI.btnArchiveJob}</button>
                                 <button onclick="deleteJob('\${job.id}')" class="danger">🗑️ \${UI.btnDelete}</button>
                             </div>
@@ -1994,9 +1999,45 @@ function buildHtml(lang: Locale): string {
                 progressWrap.style.display = progressBarHtml ? 'block' : 'none';
             }
             const regenBtn = card.querySelector('#regen-btn-' + jobId);
-            if (regenBtn) regenBtn.style.display = (status && status.steps && status.steps.review === 'completed' && !progress) ? 'inline-block' : 'none';
+            if (regenBtn) regenBtn.style.display = (job.packComplete && !progress) ? 'inline-block' : 'none';
+            const exportBtn = card.querySelector('#export-btn-' + jobId);
+            if (exportBtn) exportBtn.style.display = (job.packComplete && !progress) ? 'inline-block' : 'none';
             card.classList.toggle('is-generating', !!(isPackGenerationInFlight(job) || progress));
             card.classList.toggle('is-failed', !progress && isBatchJobFailed(job));
+        }
+
+        async function exportResume(jobId) {
+            try {
+                let dirRes = await fetch('/api/export-directory');
+                let dirData = await dirRes.json();
+                let exportDirectory = dirData.path || '';
+                if (!exportDirectory) {
+                    const entered = prompt(UI.exportDirectoryPrompt, '');
+                    if (!entered || !entered.trim()) {
+                        showToast(UI.exportNeedDirectory);
+                        return;
+                    }
+                    exportDirectory = entered.trim();
+                    await fetch('/api/export-directory', {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ path: exportDirectory }),
+                    });
+                }
+                const res = await fetch('/api/export/' + encodeURIComponent(jobId), {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({}),
+                });
+                const data = await res.json();
+                if (!res.ok) {
+                    showToast(UI.exportFailed + (data.error || res.statusText));
+                    return;
+                }
+                showToast(UI.exportSuccess + data.pagesPath + '\\n' + data.pdfPath);
+            } catch (e) {
+                showToast(UI.exportFailed + (e && e.message ? e.message : String(e)));
+            }
         }
 
         // 查看结果
@@ -2765,6 +2806,7 @@ app.get('/api/results/:jobId', (req, res) => {
       summary: results.summary,
       coverLetter: results.coverLetter,
       review: results.review,
+      jobLabel: pack.readJobLabel(jobId),
       regenerateFeedback: results.regenerateFeedback,
       truncated: results.truncation,
     });
@@ -2803,6 +2845,49 @@ app.post('/api/regenerate/:jobId', async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+app.get('/api/export-directory', (_req, res) => {
+  res.json({ path: pack.getExportDirectory() });
+});
+
+app.put('/api/export-directory', (req, res) => {
+  try {
+    const path =
+      typeof req.body?.path === 'string' ? req.body.path.trim() : '';
+    if (!path) {
+      return res.status(400).json({ error: 'path is required' });
+    }
+    pack.setExportDirectory(path);
+    res.json({ success: true, path });
+  } catch (error) {
+    res.status(500).json({
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+app.post('/api/export/:jobId', async (req, res) => {
+  try {
+    const { jobId } = req.params;
+    const exportDirectory =
+      typeof req.body?.exportDirectory === 'string'
+        ? req.body.exportDirectory.trim()
+        : undefined;
+    const result = await pack.exportResume(jobId, {
+      pages: createPagesPort(),
+      exportDirectory: exportDirectory || undefined,
+    });
+    res.json({
+      success: true,
+      pagesPath: result.pagesPath,
+      pdfPath: result.pdfPath,
+    });
+  } catch (error) {
+    res.status(400).json({
       error: error instanceof Error ? error.message : 'Unknown error',
     });
   }

@@ -348,4 +348,15 @@ export class PackStore {
   isStepCompleted(jobId: string, step: keyof Status['steps']): boolean {
     return this.readStatus(jobId)?.steps[step] === 'completed';
   }
+
+  readJobLabel(jobId: string): string | undefined {
+    const raw = this.readOutFile(jobId, 'job-label.txt');
+    if (raw === undefined) return undefined;
+    const label = raw.trim();
+    return label || undefined;
+  }
+
+  writeJobLabel(jobId: string, label: string): void {
+    this.writeOutFile(jobId, 'job-label.txt', label.trim());
+  }
 }

@@ -13,6 +13,15 @@ import {
   editJob,
   type EditJobResult,
 } from './edit-job.js';
+import {
+  readExportDirectory,
+  writeExportDirectory,
+} from './export-directory.js';
+import {
+  exportResume,
+  type ExportResumeResult,
+  type PagesPort,
+} from './resume-export.js';
 import type {
   ApplicationPack,
   ApplicationPackModuleOptions,
@@ -32,6 +41,8 @@ export type {
 
 export type { EditJobResult } from './edit-job.js';
 export { JobEditBlockedError, JobNotFoundError } from './edit-job.js';
+export type { ExportResumeResult, PagesPort } from './resume-export.js';
+export { readExportDirectory, writeExportDirectory } from './export-directory.js';
 
 export type ApplicationPackModule = {
   saveJobInputs(jobId: string, inputs: JobInputs): void;
@@ -44,6 +55,7 @@ export type ApplicationPackModule = {
   /** Job IDs whose Application Pack review step is not yet completed. */
   listIncompleteJobIds(): string[];
   readPack(jobId: string): ApplicationPack;
+  readJobLabel(jobId: string): string | undefined;
   /** Test/support: seed artifacts without going through generatePack. */
   writeArtifacts(jobId: string, artifacts: ArtifactWrite): void;
   deleteJob(jobId: string): void;
@@ -57,6 +69,16 @@ export type ApplicationPackModule = {
     feedback: string,
     options: { model: ModelPort }
   ): Promise<void>;
+  exportResume(
+    jobId: string,
+    options: {
+      pages: PagesPort;
+      profile?: Profile;
+      exportDirectory?: string;
+    }
+  ): Promise<ExportResumeResult>;
+  getExportDirectory(): string | null;
+  setExportDirectory(directory: string): void;
   workspaceRoot: string;
   /** Resolve templates for a Job's bound Application Track (test override via options.templatesRoot). */
   templatesRootForJob(jobId: string): string;
@@ -97,9 +119,13 @@ export function createApplicationPackModule(
     listJobs: () => listJobs(store),
     listIncompleteJobIds: () => listIncompleteJobIds(store),
     readPack: (jobId) => store.readPack(jobId),
+    readJobLabel: (jobId) => store.readJobLabel(jobId),
     writeArtifacts: (jobId, artifacts) => store.writeArtifacts(jobId, artifacts),
     deleteJob: (jobId) => store.deleteJob(jobId),
     clearAllJobsAndOutputs: () => store.clearAllJobsAndOutputs(),
+    getExportDirectory: () => readExportDirectory(workspaceRoot),
+    setExportDirectory: (directory) =>
+      writeExportDirectory(workspaceRoot, directory),
     async generatePack(jobId, { profile, model }) {
       return generatePackForJob({
         store,
@@ -116,6 +142,16 @@ export function createApplicationPackModule(
         feedback,
         model,
         templatesRoot: templatesRootForJob(jobId),
+      });
+    },
+    async exportResume(jobId, { pages, profile, exportDirectory }) {
+      return exportResume({
+        store,
+        workspaceRoot,
+        jobId,
+        profile: profileForJob(jobId, profile),
+        pages,
+        exportDirectory,
       });
     },
   };

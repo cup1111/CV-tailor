@@ -3,6 +3,7 @@ import type { z } from 'zod';
 import { loadTemplate, type Template } from '../services/template.js';
 import type { Status } from '../types/outputs.js';
 import { extractExperienceBullets } from './extract.js';
+import { settleReviewStep } from './job-label.js';
 import type { PackStore } from './store.js';
 import type { ModelPort } from './types.js';
 
@@ -275,7 +276,11 @@ export async function runPromptStep(args: {
     }
 
     if (contract.statusStep) {
-      store.updateStepStatus(jobId, contract.statusStep, 'completed');
+      if (step === 'review') {
+        settleReviewStep(store, jobId, text);
+      } else {
+        store.updateStepStatus(jobId, contract.statusStep, 'completed');
+      }
     }
     return { skipped: false, text };
   } catch (error) {
