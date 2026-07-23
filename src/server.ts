@@ -510,6 +510,10 @@ function buildHtml(lang: Locale): string {
         button.success:hover {
             background-color: #218838;
         }
+        button.export-done {
+            background-color: #1e7e34;
+            box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.35);
+        }
         button:disabled {
             background-color: #6c757d;
             cursor: not-allowed;
@@ -2007,6 +2011,26 @@ function buildHtml(lang: Locale): string {
         }
 
         async function exportResume(jobId) {
+            const btn = document.getElementById('export-btn-' + jobId);
+            const labelIdle = '📄 ' + UI.btnExportResume;
+            function restoreExportBtn() {
+                if (!btn) return;
+                if (btn._exportResetTimer) {
+                    clearTimeout(btn._exportResetTimer);
+                    btn._exportResetTimer = null;
+                }
+                btn.classList.remove('export-done');
+                btn.textContent = labelIdle;
+                btn.disabled = isGenerationLocked();
+            }
+            function markExportDone() {
+                if (!btn) return;
+                btn.disabled = true;
+                btn.classList.add('export-done');
+                btn.textContent = '✓ ' + UI.btnExported;
+                if (btn._exportResetTimer) clearTimeout(btn._exportResetTimer);
+                btn._exportResetTimer = setTimeout(restoreExportBtn, 2500);
+            }
             try {
                 let dirRes = await fetch('/api/export-directory');
                 let dirData = await dirRes.json();
@@ -2014,7 +2038,7 @@ function buildHtml(lang: Locale): string {
                 if (!exportDirectory) {
                     const entered = prompt(UI.exportDirectoryPrompt, '');
                     if (!entered || !entered.trim()) {
-                        showToast(UI.exportNeedDirectory);
+                        showMessage(UI.exportNeedDirectory, 'error');
                         return;
                     }
                     exportDirectory = entered.trim();
@@ -2024,6 +2048,15 @@ function buildHtml(lang: Locale): string {
                         body: JSON.stringify({ path: exportDirectory }),
                     });
                 }
+                if (btn) {
+                    if (btn._exportResetTimer) {
+                        clearTimeout(btn._exportResetTimer);
+                        btn._exportResetTimer = null;
+                    }
+                    btn.disabled = true;
+                    btn.classList.remove('export-done');
+                    btn.textContent = UI.btnExporting;
+                }
                 const res = await fetch('/api/export/' + encodeURIComponent(jobId), {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -2031,12 +2064,15 @@ function buildHtml(lang: Locale): string {
                 });
                 const data = await res.json();
                 if (!res.ok) {
-                    showToast(UI.exportFailed + (data.error || res.statusText));
+                    restoreExportBtn();
+                    showMessage(UI.exportFailed + (data.error || res.statusText), 'error');
                     return;
                 }
-                showToast(UI.exportSuccess + data.pagesPath + '\\n' + data.pdfPath);
+                markExportDone();
+                showMessage(UI.exportSuccess + data.pagesPath + '\\n' + data.pdfPath, 'success');
             } catch (e) {
-                showToast(UI.exportFailed + (e && e.message ? e.message : String(e)));
+                restoreExportBtn();
+                showMessage(UI.exportFailed + (e && e.message ? e.message : String(e)), 'error');
             }
         }
 
@@ -2070,64 +2106,6 @@ function buildHtml(lang: Locale): string {
                 }
 
                 let html = '';
-                if (results.hasCompanyInfo) {
-                    html += '<div class="results-mode-banner has-company">' + UI.resultsBannerCompany + '</div>';
-                } else {
-                    html += '<div class="results-mode-banner jd-only">' + UI.resultsBannerJdOnly + '</div>';
-                }
-                if (results.truncated && (results.truncated.companyResearch || results.truncated.painPoints || results.truncated.mapping)) {
-                    const parts = [];
-                    if (results.truncated.companyResearch) parts.push(UI.truncationCompany);
-                    if (results.truncated.painPoints) parts.push(UI.truncationPainPoints);
-                    if (results.truncated.mapping) parts.push(UI.truncationMapping);
-                    html += '<div class="results-mode-banner truncation-warning">⚠️ ' + UI.resultsTruncation + parts.join(UI.truncationSep) + UI.resultsTruncationSuffix + '</div>';
-                }
-
-                if (results.companyProfile) {
-                    html += \`
-                        <div class="result-section">
-                            <h4>🏢 \${UI.resultCompanyProfile}</h4>
-                            <div class="result-content">\${escapeHtml(results.companyProfile)}</div>
-                        </div>
-                    \`;
-                }
-
-                if (results.summary) {
-                    const whitespaceRegex = /[\\s\\n\\r\\t]+/g;
-                    const cleanedSummary = results.summary.replace(whitespaceRegex, ' ').trim();
-                    const summaryEscaped = escapeHtml(cleanedSummary);
-                    html += \`
-                        <div class="result-section">
-                            <h4>📄 \${UI.resultSummary}</h4>
-                            <div class="result-content-wrap">
-                                <button type="button" class="copy-btn" onclick="copyResultSection(this)" title="\${UI.copyBtn}">\${UI.copyBtn}</button>
-                                <div class="result-content">\${summaryEscaped}</div>
-                            </div>
-                        </div>
-                    \`;
-                }
-
-                if (results.experienceBullets) {
-                    var expText = results.experienceBullets.trim();
-                    var expBlocks = expText.split(/(?:\\r?\\n)+(?=[^\\n]+\\s+-\\s+[^\\n]+(?=\\r?\\n|$))/).filter(Boolean);
-                    if (expBlocks.length === 0) expBlocks = [expText];
-                    html += '<div class="result-section"><h4>📝 ' + UI.resultExperience + '</h4></div>';
-                    for (var i = 0; i < expBlocks.length; i++) {
-                        var block = expBlocks[i];
-                        var nl = block.indexOf('\\n');
-                        var blockTitle = nl >= 0 ? block.slice(0, nl).trim() : block.trim();
-                        var blockBody = nl >= 0 ? block.slice(nl + 1).trim() : '';
-                        html += \`
-                            <div class="result-section result-subsection">
-                                <h4>\${escapeHtml(blockTitle)}</h4>
-                                <div class="result-content-wrap">
-                                    <button type="button" class="copy-btn" onclick="copyResultSection(this)" title="\${UI.copyBtn}">\${UI.copyBtn}</button>
-                                    <div class="result-content">\${escapeHtml(blockBody)}</div>
-                                </div>
-                            </div>
-                        \`;
-                    }
-                }
 
                 if (results.coverLetter) {
                     html += \`
@@ -2141,37 +2119,19 @@ function buildHtml(lang: Locale): string {
                     \`;
                 }
 
-                if (results.mapping) {
-                    html += \`
-                        <div class="result-section">
-                            <h4>🗺️ \${UI.resultMapping}</h4>
-                            <div class="result-content">\${escapeHtml(results.mapping)}</div>
-                        </div>
-                    \`;
-                }
-
                 if (results.review) {
                     html += \`
                         <div class="result-section">
                             <h4>🔎 \${UI.resultReview}</h4>
-                            <div class="result-content">\${escapeHtml(results.review)}</div>
-                        </div>
-                    \`;
-                }
-                if (results.regenerateFeedback) {
-                    html += \`
-                        <div class="result-section">
-                            <h4>📋 \${UI.resultRegenFeedback}</h4>
-                            <div class="regen-fb-content result-content regenerate-feedback-md">\${escapeHtml(results.regenerateFeedback)}</div>
+                            <div class="result-content-wrap">
+                                <button type="button" class="copy-btn" onclick="copyResultSection(this)" title="\${UI.copyBtn}">\${UI.copyBtn}</button>
+                                <div class="result-content">\${escapeHtml(results.review)}</div>
+                            </div>
                         </div>
                     \`;
                 }
 
                 panel.innerHTML = html || ('<p>' + UI.msgNoResults + '</p>');
-                const fbDiv = panel.querySelector('.regen-fb-content');
-                if (fbDiv && results.regenerateFeedback && typeof marked !== 'undefined') {
-                    fbDiv.innerHTML = marked.parse(results.regenerateFeedback);
-                }
             } catch (error) {
                 panel.innerHTML = '<p class="error">' + UI.msgLoadFailed + error.message + '</p>';
             }
