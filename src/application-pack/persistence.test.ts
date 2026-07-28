@@ -26,6 +26,7 @@ describe('Application Pack persistence', () => {
     expect(pack.loadJobInputs('job-1')).toEqual({
       companyInfo: 'Acme robotics',
       jd: 'Build APIs for warehouse robots',
+      jobLink: '',
       applicationTrack: 'software-engineering',
     });
   });
@@ -49,6 +50,7 @@ describe('Application Pack persistence', () => {
     expect(pack.loadJobInputs('job-track')).toEqual({
       companyInfo: '',
       jd: 'IT helpdesk role updated',
+      jobLink: '',
       applicationTrack: 'software-engineering',
     });
   });

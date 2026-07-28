@@ -64,7 +64,8 @@ describe('Application Pack job view', () => {
     });
     const outB = join(root, 'out', 'b');
     mkdirSync(outB, { recursive: true });
-    writeFileSync(join(outB, 'job-label.txt'), 'Engineer - CompleteCo');
+    writeFileSync(join(outB, 'role-title.txt'), 'Engineer');
+    writeFileSync(join(outB, 'employer-name.txt'), 'CompleteCo');
     writeFileSync(
       join(outB, 'status.json'),
       JSON.stringify({
@@ -99,5 +100,89 @@ describe('Application Pack job view', () => {
     const result = pack.readPack('x');
     expect(result.hasCompanyInfo).toBe(true);
     expect(Object.keys(result)).not.toContain('hasCompanyProfile');
+  });
+
+  it('heals a stuck review from persisted legacy review output', () => {
+    const pack = createApplicationPackModule({ workspaceRoot: root });
+    pack.saveJobInputs('legacy', {
+      companyInfo: '',
+      jd: 'Legacy review job',
+      applicationTrack: 'software-engineering',
+    });
+    pack.writeArtifacts('legacy', {
+      summary: 'S',
+      experienceBullets: 'E',
+      coverLetter: 'C',
+      review: 'PASS\nJob Label: Backend Engineer - Globex\nLooks good.',
+    });
+    const outDir = join(root, 'out', 'legacy');
+    mkdirSync(outDir, { recursive: true });
+    writeFileSync(
+      join(outDir, 'status.json'),
+      JSON.stringify({
+        jobId: 'legacy',
+        steps: {
+          companyResearch: 'completed',
+          painPoints: 'completed',
+          mapping: 'completed',
+          experienceBullets: 'completed',
+          summary: 'completed',
+          coverLetter: 'completed',
+          review: 'failed',
+          render: 'pending',
+        },
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      }),
+      'utf-8'
+    );
+
+    const legacy = pack.listJobs().find((j) => j.id === 'legacy')!;
+    expect(legacy.packComplete).toBe(true);
+  });
+
+  it('reconciles legacy review-failed jobs with advisory FAIL verdict', () => {
+    const pack = createApplicationPackModule({ workspaceRoot: root });
+    pack.saveJobInputs('fail-advisory', {
+      companyInfo: '',
+      jd: 'Advisory fail job',
+      applicationTrack: 'software-engineering',
+    });
+    pack.writeArtifacts('fail-advisory', {
+      summary: 'S',
+      experienceBullets: 'E',
+      coverLetter: 'C',
+      review:
+        'FAIL\nRole Title: Backend Engineer\nEmployer Name: Globex\nNeeds better JD fit.',
+    });
+    const outDir = join(root, 'out', 'fail-advisory');
+    mkdirSync(outDir, { recursive: true });
+    writeFileSync(
+      join(outDir, 'status.json'),
+      JSON.stringify({
+        jobId: 'fail-advisory',
+        steps: {
+          companyResearch: 'completed',
+          painPoints: 'completed',
+          mapping: 'completed',
+          experienceBullets: 'completed',
+          summary: 'completed',
+          coverLetter: 'completed',
+          review: 'failed',
+          render: 'pending',
+        },
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      }),
+      'utf-8'
+    );
+
+    const job = pack.listJobs().find((j) => j.id === 'fail-advisory')!;
+    expect(job.packComplete).toBe(true);
+    expect(job.reviewVerdictFail).toBe(true);
+    expect(pack.readJobIdentity('fail-advisory')).toEqual({
+      roleTitle: 'Backend Engineer',
+      employerName: 'Globex',
+    });
   });
 });

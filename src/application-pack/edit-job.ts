@@ -60,11 +60,13 @@ export function editJob(store: PackStore, jobId: string, inputs: JobInputs): Edi
   const applicationTrack = assertTrackId(inputs.applicationTrack);
   const companyInfo =
     typeof inputs.companyInfo === 'string' ? inputs.companyInfo.trim() : '';
+  const jobLink = typeof inputs.jobLink === 'string' ? inputs.jobLink.trim() : '';
 
   const existing = store.loadJobInputs(jobId);
   const unchanged =
     existing.jd.trim() === jd &&
     existing.companyInfo.trim() === companyInfo &&
+    existing.jobLink?.trim() === jobLink &&
     existing.applicationTrack === applicationTrack;
 
   if (unchanged) {
@@ -76,6 +78,6 @@ export function editJob(store: PackStore, jobId: string, inputs: JobInputs): Edi
     store.clearJobOutputs(jobId);
   }
 
-  store.saveJobInputs(jobId, { jd, companyInfo, applicationTrack });
+  store.saveJobInputs(jobId, { jd, companyInfo, jobLink, applicationTrack });
   return { kind: 'updated', clearedOutputs };
 }

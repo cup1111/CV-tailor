@@ -51,7 +51,7 @@ export async function generatePackForJob(args: {
   profile: Profile;
   model: ModelPort;
   templatesRoot: string;
-}): Promise<{ reviewFailed: boolean }> {
+}): Promise<void> {
   const { store, jobId, profile, model, templatesRoot } = args;
   store.getOrCreateStatus(jobId);
   store.ensureOutDir(jobId);
@@ -176,11 +176,6 @@ export async function generatePackForJob(args: {
     model,
     templatesRoot,
   });
-
-  const reviewText = (store.readOutFile(jobId, 'review.raw.txt') ?? '').trim();
-  const firstLine = reviewText.split(/\r?\n/)[0]?.trim().toUpperCase() || '';
-  const reviewFailed = firstLine === 'FAIL' || firstLine.startsWith('FAIL');
-  return { reviewFailed };
 }
 
 export async function runReview(args: {

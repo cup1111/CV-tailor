@@ -35,7 +35,7 @@ function createFakeModel(overrides?: {
   const counts = overrides?.callCounts ?? { webSearch: 0, text: 0, json: 0 };
   const reviewText =
     overrides?.reviewText ??
-    'PASS\nJob Label: Software Engineer - Acme\nLooks good.';
+    'PASS\nRole Title: Software Engineer\nEmployer Name: Acme\nLooks good.';
 
   return {
     async webSearch(query: string) {
@@ -163,12 +163,11 @@ describe('Application Pack lifecycle', () => {
         '||\nPastCo - Engineer\n- Shipped APIs\n||',
         'Summary text',
         'Cover letter text',
-        'PASS\nJob Label: Backend Engineer - Acme\nGood fit.',
+        'PASS\nRole Title: Backend Engineer\nEmployer Name: Acme\nGood fit.',
       ],
     });
 
-    const result = await pack.generatePack('j1', { profile: sampleProfile, model });
-    expect(result.reviewFailed).toBe(false);
+    await pack.generatePack('j1', { profile: sampleProfile, model });
 
     const read = pack.readPack('j1');
     expect(read.exists).toBe(true);
@@ -199,7 +198,7 @@ describe('Application Pack lifecycle', () => {
         '||\nPastCo - Engineer\n- Bullet\n||',
         'Summary',
         'Cover',
-        'PASS\nJob Label: Engineer - ExampleCo\nOk',
+        'PASS\nRole Title: Engineer\nEmployer Name: ExampleCo\nOk',
       ],
     });
     await pack.generatePack('j2', { profile: sampleProfile, model: model1 });
@@ -228,7 +227,7 @@ describe('Application Pack lifecycle', () => {
         '||\nPastCo - Engineer\n- B\n||',
         'Summary original',
         'Cover original',
-        'FAIL\nJob Label: Role - Company\nNeeds better JD fit.',
+        'FAIL\nRole Title: Role\nEmployer Name: Company\nNeeds better JD fit.',
       ],
       json: {
         summary: 'Should not appear',
@@ -247,10 +246,12 @@ describe('Application Pack lifecycle', () => {
       },
     };
 
-    const result = await pack.generatePack('j3', { profile: sampleProfile, model: wrapped });
-    expect(result.reviewFailed).toBe(true);
+    await pack.generatePack('j3', { profile: sampleProfile, model: wrapped });
     expect(jsonCalls).toBe(0);
     expect(pack.readPack('j3').summary).toBe('Summary original');
+    const job = pack.listJobs().find((j) => j.id === 'j3')!;
+    expect(job.packComplete).toBe(true);
+    expect(job.reviewVerdictFail).toBe(true);
   });
 
   it('omits company profile from readPack when company info was not provided', async () => {
@@ -298,7 +299,7 @@ describe('Application Pack lifecycle', () => {
       generateJson: model.generateJson.bind(model),
       async generateText() {
         textPhase += 1;
-        return 'PASS\nJob Label: Backend Engineer - Acme\nAfter regenerate.';
+        return 'PASS\nRole Title: Backend Engineer\nEmployer Name: Acme\nAfter regenerate.';
       },
     };
 
@@ -337,7 +338,7 @@ describe('Application Pack lifecycle', () => {
         '||\nPastCo - Engineer\n- B\n||',
         'Summary',
         'Cover',
-        'PASS\nJob Label: Helpdesk Analyst - Contoso\nOk',
+        'PASS\nRole Title: Helpdesk Analyst\nEmployer Name: Contoso\nOk',
       ],
     });
     await pack.generatePack('track-job', { profile: sampleProfile, model });

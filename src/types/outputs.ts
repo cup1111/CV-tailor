@@ -40,6 +40,8 @@ export const StepStatusSchema = z.enum(['pending', 'in_progress', 'completed', '
 
 export const StatusSchema = z.object({
   jobId: z.string(),
+  /** Present only when the latest Review Verdict is FAIL (advisory; does not block completeness). */
+  reviewVerdict: z.literal('fail').optional(),
   steps: z.object({
     companyResearch: StepStatusSchema.optional(),
     painPoints: StepStatusSchema,

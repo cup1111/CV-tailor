@@ -1,6 +1,7 @@
 node_modules/
 dist/
 .env
+google-service-account.json
 *.log
 .DS_Store
 out/

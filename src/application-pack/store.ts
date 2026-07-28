@@ -14,7 +14,7 @@ import {
   type StepStatus,
 } from '../types/outputs.js';
 import { TRACK_IDS, type TrackId } from '../services/track.js';
-import type { ApplicationPack, JobInputs, PackTruncation } from './types.js';
+import type { ApplicationPack, JobIdentity, JobInputs, PackTruncation } from './types.js';
 
 const COMPANY_MARKER = '---COMPANY---';
 const JD_MARKER = '---JD---';
@@ -76,19 +76,20 @@ export class PackStore {
 
     const trackPath = join(this.jobsDir(), `${jobId}.track.txt`);
     const jdPath = join(this.jobsDir(), `${jobId}.md`);
-    const urlMatch = inputs.jd.match(/https?:\/\/[^\s]+/);
-    const url = urlMatch ? urlMatch[0] : '';
-    writeFileSync(
-      jdPath,
-      `${url ? `URL: ${url}\n\n` : ''}${inputs.jd.trim()}`,
-      'utf-8'
-    );
+    writeFileSync(jdPath, inputs.jd.trim(), 'utf-8');
     const companyPath = join(this.jobsDir(), `${jobId}.company.txt`);
     const company = inputs.companyInfo.trim();
     if (company) {
       writeFileSync(companyPath, company, 'utf-8');
     } else if (existsSync(companyPath)) {
       unlinkSync(companyPath);
+    }
+    const linkPath = join(this.jobsDir(), `${jobId}.link.txt`);
+    const jobLink = (inputs.jobLink ?? '').trim();
+    if (jobLink) {
+      writeFileSync(linkPath, jobLink, 'utf-8');
+    } else if (existsSync(linkPath)) {
+      unlinkSync(linkPath);
     }
     writeFileSync(trackPath, `${inputs.applicationTrack}\n`, 'utf-8');
   }
@@ -132,7 +133,29 @@ export class PackStore {
       );
     }
 
-    return { companyInfo, jd: jdText, applicationTrack };
+    return {
+      companyInfo,
+      jd: jdText,
+      jobLink: this.readJobLinkFromFiles(jobId, jdText),
+      applicationTrack,
+    };
+  }
+
+  private readJobLinkFromFiles(jobId: string, jdText: string): string {
+    const linkPath = join(this.jobsDir(), `${jobId}.link.txt`);
+    if (existsSync(linkPath)) {
+      const link = readFileSync(linkPath, 'utf-8').trim();
+      if (link) return link;
+    }
+    const urlLine = jdText
+      .split('\n')
+      .find((line) => /^URL:\s*/i.test(line.trim()));
+    if (urlLine) {
+      const match = /https?:\/\/[^\s]+/.exec(urlLine);
+      if (match) return match[0];
+    }
+    const match = /https?:\/\/[^\s]+/.exec(jdText);
+    return match ? match[0] : '';
   }
 
   listJobIds(): string[] {
@@ -247,9 +270,11 @@ export class PackStore {
     const jdPath = join(this.jobsDir(), `${jobId}.md`);
     const companyPath = join(this.jobsDir(), `${jobId}.company.txt`);
     const trackPath = join(this.jobsDir(), `${jobId}.track.txt`);
+    const linkPath = join(this.jobsDir(), `${jobId}.link.txt`);
     if (existsSync(jdPath)) unlinkSync(jdPath);
     if (existsSync(companyPath)) unlinkSync(companyPath);
     if (existsSync(trackPath)) unlinkSync(trackPath);
+    if (existsSync(linkPath)) unlinkSync(linkPath);
     this.clearJobOutputs(jobId);
   }
 
@@ -278,7 +303,7 @@ export class PackStore {
     const outRoot = join(this.workspaceRoot, 'out');
     if (existsSync(jobs)) {
       for (const file of readdirSync(jobs)) {
-        if (file.endsWith('.md') || file.endsWith('.company.txt') || file.endsWith('.track.txt')) {
+        if (file.endsWith('.md') || file.endsWith('.company.txt') || file.endsWith('.track.txt') || file.endsWith('.link.txt')) {
           unlinkSync(join(jobs, file));
         }
       }
@@ -345,18 +370,53 @@ export class PackStore {
     this.writeStatus(jobId, status);
   }
 
+  setReviewVerdict(jobId: string, verdict: 'fail' | null): void {
+    const status = this.getOrCreateStatus(jobId);
+    if (verdict === 'fail') {
+      status.reviewVerdict = 'fail';
+    } else {
+      delete status.reviewVerdict;
+    }
+    this.writeStatus(jobId, status);
+  }
+
+  hasReviewVerdictFail(jobId: string): boolean {
+    return this.readStatus(jobId)?.reviewVerdict === 'fail';
+  }
+
   isStepCompleted(jobId: string, step: keyof Status['steps']): boolean {
     return this.readStatus(jobId)?.steps[step] === 'completed';
   }
 
-  readJobLabel(jobId: string): string | undefined {
-    const raw = this.readOutFile(jobId, 'job-label.txt');
-    if (raw === undefined) return undefined;
-    const label = raw.trim();
-    return label || undefined;
+  readJobIdentity(jobId: string): JobIdentity {
+    const roleRaw = this.readOutFile(jobId, 'role-title.txt');
+    const employerRaw = this.readOutFile(jobId, 'employer-name.txt');
+    const roleTitle = roleRaw?.trim() || undefined;
+    const employerName = employerRaw?.trim() || undefined;
+    if (roleTitle && employerName) {
+      return { roleTitle, employerName };
+    }
+
+    const legacy = this.readOutFile(jobId, 'job-label.txt')?.trim();
+    if (legacy) {
+      const sep = legacy.indexOf(' - ');
+      if (sep > 0) {
+        const splitRole = legacy.slice(0, sep).trim();
+        const splitEmployer = legacy.slice(sep + 3).trim();
+        if (splitRole && splitEmployer) {
+          return { roleTitle: splitRole, employerName: splitEmployer };
+        }
+      }
+    }
+
+    return {
+      roleTitle: roleTitle || undefined,
+      employerName: employerName || undefined,
+    };
   }
 
-  writeJobLabel(jobId: string, label: string): void {
-    this.writeOutFile(jobId, 'job-label.txt', label.trim());
+  writeJobIdentity(jobId: string, roleTitle: string, employerName: string): void {
+    this.writeOutFile(jobId, 'role-title.txt', roleTitle.trim());
+    this.writeOutFile(jobId, 'employer-name.txt', employerName.trim());
   }
 }

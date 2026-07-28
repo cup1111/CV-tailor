@@ -3,7 +3,7 @@ import { join } from 'path';
 import type { Profile } from '../types/profile.js';
 import { resolveTrackPaths } from '../services/track.js';
 import { readExportDirectory } from './export-directory.js';
-import { isPackComplete } from './job-label.js';
+import { isPackComplete, reconcileReviewStep } from './job-identity.js';
 import type { PackStore } from './store.js';
 
 export type PagesPort = {
@@ -26,9 +26,10 @@ export type PlanResumeExportFillsInput = {
 
 export function buildResumeExportBasename(
   personalName: string,
-  jobLabel: string
+  roleTitle: string,
+  employerName: string
 ): string {
-  return `${personalName.trim()} CV ${jobLabel.trim()}`;
+  return `${personalName.trim()} CV ${roleTitle.trim()} - ${employerName.trim()}`;
 }
 
 function experienceSlotCount(layoutTags: string[]): number {
@@ -108,12 +109,16 @@ export async function exportResume(args: {
   exportDirectory?: string;
 }): Promise<ExportResumeResult> {
   const { store, workspaceRoot, jobId, profile, pages } = args;
+  reconcileReviewStep(store, jobId);
 
   if (!isPackComplete(store, jobId)) {
     throw new Error('Resume Export requires a complete Application Pack');
   }
 
-  const jobLabel = store.readJobLabel(jobId)!;
+  const identity = store.readJobIdentity(jobId);
+  if (!identity.roleTitle || !identity.employerName) {
+    throw new Error('Resume Export requires Role Title and Employer Name');
+  }
   const pack = store.readPack(jobId);
   if (!pack.summary?.trim() || !pack.experienceBullets?.trim()) {
     throw new Error('Resume Export requires Summary and Experience Bullets');
@@ -143,7 +148,11 @@ export async function exportResume(args: {
 
   mkdirSync(exportDir, { recursive: true });
 
-  const basename = buildResumeExportBasename(profile.personal.name, jobLabel);
+  const basename = buildResumeExportBasename(
+    profile.personal.name,
+    identity.roleTitle,
+    identity.employerName
+  );
   const pagesOutPath = join(exportDir, `${basename}.pages`);
   const pdfOutPath = join(exportDir, `${basename}.pdf`);
 

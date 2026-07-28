@@ -19,6 +19,10 @@ import { PACK_GENERATION_STEPS } from './application-pack/batch-progress.js';
 import { UI_STRINGS, type Locale } from './i18n.js';
 import { getDailyThemeName, renderDailyThemeCss } from './ui/daily-theme.js';
 import {
+  readSubmissionSpreadsheetId,
+  writeSubmissionSpreadsheetId,
+} from './services/submission-spreadsheet.js';
+import {
   TRACK_IDS,
   type TrackId,
 } from './services/track.js';
@@ -588,6 +592,11 @@ function buildHtml(lang: Locale): string {
             background: #6c757d;
             color: #fff;
         }
+        .jd-mode-badge.review-advisory {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeeba;
+        }
         .results-mode-banner {
             padding: 10px 14px;
             border-radius: 4px;
@@ -1120,6 +1129,13 @@ function buildHtml(lang: Locale): string {
                     </div>
                 </div>
                 <div class="form-group">
+                    <label for="jobLink">{{jobLinkLabel}}</label>
+                    <input type="url" id="jobLink" name="jobLink" placeholder="{{jobLinkPlaceholder}}">
+                    <div class="field-help-row">
+                        <span>{{jobLinkHelper}}</span>
+                    </div>
+                </div>
+                <div class="form-group">
                     <label for="companyInfo">{{companyInfoLabel}}</label>
                     <textarea id="companyInfo" name="companyInfo" placeholder="{{companyInfoPlaceholder}}"></textarea>
                     <div class="field-help-row">
@@ -1129,6 +1145,17 @@ function buildHtml(lang: Locale): string {
                 </div>
                 <button type="submit" id="saveJdBtn" disabled>{{saveJdButton}}</button>
             </form>
+            <div class="workspace-settings" style="margin-top:24px;padding-top:16px;border-top:1px solid var(--theme-border);">
+                <h3 style="margin-bottom:12px;">{{workspaceSettingsTitle}}</h3>
+                <div class="form-group">
+                    <label for="submissionSpreadsheet">{{submissionSpreadsheetLabel}}</label>
+                    <input type="url" id="submissionSpreadsheet" placeholder="{{submissionSpreadsheetPlaceholder}}">
+                    <div class="field-help-row">
+                        <span>{{submissionSpreadsheetHelper}}</span>
+                    </div>
+                </div>
+                <button type="button" onclick="saveSubmissionSpreadsheet()">{{submissionSpreadsheetSave}}</button>
+            </div>
             <div id="message"></div>
         </div>
 
@@ -1267,6 +1294,10 @@ function buildHtml(lang: Locale): string {
                     <div class="field-help-row">
                         <span>{{trackSelectHint}}</span>
                     </div>
+                </div>
+                <div class="form-group">
+                    <label for="editJobLink">{{jobLinkLabel}}</label>
+                    <input type="url" id="editJobLink" name="jobLink" placeholder="{{jobLinkPlaceholder}}">
                 </div>
                 <div class="form-group">
                     <label for="editCompanyInfo">{{companyInfoLabel}}</label>
@@ -1487,7 +1518,9 @@ function buildHtml(lang: Locale): string {
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error || UI.requestFailed);
                 celebrateConfetti();
-                showMessage('🎉 ' + UI.applySuccess, 'success');
+                let msg = '🎉 ' + UI.applySuccess;
+                if (data.sheetWarning) msg += ' ' + UI.archiveSheetWarning;
+                showMessage(msg, data.sheetWarning ? 'error' : 'success');
                 await renderApplyCounter();
                 refreshList();
             } catch (e) {
@@ -1536,6 +1569,7 @@ function buildHtml(lang: Locale): string {
             if (editJd) editJd.addEventListener('input', updateEditUxState);
             if (editCompany) editCompany.addEventListener('input', updateEditUxState);
             updateInputUxState();
+            loadSubmissionSpreadsheetConfig();
             renderApplyCounter();
             renderDailyStarBuddy();
             refreshMotivation();
@@ -1578,6 +1612,7 @@ function buildHtml(lang: Locale): string {
             e.preventDefault();
             const jdText = document.getElementById('jd').value.trim();
             const companyText = (document.getElementById('companyInfo') && document.getElementById('companyInfo').value) ? document.getElementById('companyInfo').value.trim() : '';
+            const jobLinkText = (document.getElementById('jobLink') && document.getElementById('jobLink').value) ? document.getElementById('jobLink').value.trim() : '';
             const applicationTrack = document.getElementById('applicationTrack')?.value || 'software-engineering';
             if (!jdText) {
                 showMessage('✗ ' + UI.msgJdRequired, 'error');
@@ -1587,7 +1622,7 @@ function buildHtml(lang: Locale): string {
                 const response = await fetch('/api/ingest', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ jd: jdText, companyInfo: companyText || undefined, applicationTrack })
+                    body: JSON.stringify({ jd: jdText, companyInfo: companyText || undefined, jobLink: jobLinkText || undefined, applicationTrack })
                 });
                 
                 const result = await response.json();
@@ -1913,7 +1948,11 @@ function buildHtml(lang: Locale): string {
                 const trackLabel = job.applicationTrack === 'it-support'
                     ? UI.trackItSupport
                     : UI.trackSoftwareEngineering;
+                const reviewAdvisoryBadge = job.reviewVerdictFail
+                    ? \`<span class="jd-mode-badge review-advisory" id="review-advisory-\${job.id}">\${UI.badgeReviewAdvisory}</span>\`
+                    : \`<span class="jd-mode-badge review-advisory" id="review-advisory-\${job.id}" style="display:none"></span>\`;
                 const inFlight = !!(progress || (status?.steps && Object.values(status.steps).some(s => s === 'in_progress')));
+                const hasReviewResult = !!(status?.steps && (status.steps.review === 'completed' || status.steps.review === 'failed'));
                 const generatingClass = isPackGenerationInFlight(job) || progress ? ' is-generating' : (isBatchJobFailed(job) ? ' is-failed' : '');
                 const editBtn = inFlight
                     ? ''
@@ -1923,7 +1962,7 @@ function buildHtml(lang: Locale): string {
                     <div class="jd-item \${modeClass}\${generatingClass}" data-job-id="\${job.id}">
                         <div class="jd-item-header">
                             <div>
-                                <div class="jd-item-title">\${title} <span class="jd-mode-badge \${modeBadgeClass}">\${modeText}</span> <span class="jd-mode-badge">\${trackLabel}</span></div>
+                                <div class="jd-item-title">\${title} <span class="jd-mode-badge \${modeBadgeClass}">\${modeText}</span> <span class="jd-mode-badge">\${trackLabel}</span>\${reviewAdvisoryBadge}</div>
                                 <div class="jd-item-id">ID: \${job.id}</div>
                             </div>
                             <div class="jd-item-actions">
@@ -1932,7 +1971,7 @@ function buildHtml(lang: Locale): string {
                                 \${editBtn}
                                 <button onclick="toggleJdContent('\${job.id}')">📄 \${UI.btnViewJd}</button>
                                 <button onclick="viewResults('\${job.id}')">📊 \${UI.btnViewResults}</button>
-                                <button type="button" onclick="openRegenerateModal('\${job.id}')" class="success" id="regen-btn-\${job.id}" style="display:\${job.packComplete && !progress ? 'inline-block' : 'none'}"\${genDisabled}>♻️ \${UI.btnRegenerate}</button>
+                                <button type="button" onclick="openRegenerateModal('\${job.id}')" class="success" id="regen-btn-\${job.id}" style="display:\${hasReviewResult && !progress ? 'inline-block' : 'none'}"\${genDisabled}>♻️ \${UI.btnRegenerate}</button>
                                 <button type="button" onclick="exportResume('\${job.id}')" class="success" id="export-btn-\${job.id}" style="display:\${job.packComplete && !progress ? 'inline-block' : 'none'}"\${genDisabled}>📄 \${UI.btnExportResume}</button>
                                 <button type="button" class="success" onclick="archiveOneJob('\${job.id}')">🗂️ \${UI.btnArchiveJob}</button>
                                 <button onclick="deleteJob('\${job.id}')" class="danger">🗑️ \${UI.btnDelete}</button>
@@ -1951,6 +1990,7 @@ function buildHtml(lang: Locale): string {
             if (!status.steps) return UI.statusNotStarted;
             const steps = status.steps;
             if (steps.review === 'completed') return UI.statusFinished;
+            if (Object.values(steps).some(s => s === 'failed')) return UI.statusFailed;
             if (steps.coverLetter === 'completed') return UI.statusGenerating + ' (6/7)';
             if (steps.summary === 'completed') return UI.statusGenerating + ' (5/7)';
             if (steps.experienceBullets === 'completed') return UI.statusGenerating + ' (4/7)';
@@ -1964,11 +2004,11 @@ function buildHtml(lang: Locale): string {
         function getStatusClass(status) {
             if (!status.steps) return 'status-pending';
             const steps = status.steps;
+            if (Object.values(steps).some(s => s === 'failed')) return 'status-failed';
             // 如果所有主要步骤都完成了，使用已结束样式（浅蓝色）
             if (steps.review === 'completed' || steps.coverLetter === 'completed') return 'status-finished';
             if (steps.render === 'completed') return 'status-completed';
             if (Object.values(steps).some(s => s === 'in_progress')) return 'status-in-progress';
-            if (Object.values(steps).some(s => s === 'failed')) return 'status-failed';
             return 'status-pending';
         }
 
@@ -1990,6 +2030,7 @@ function buildHtml(lang: Locale): string {
             if (!card) return;
             const status = job.status || {};
             const progress = job.progress;
+            const hasReviewResult = !!(status && status.steps && (status.steps.review === 'completed' || status.steps.review === 'failed'));
             const statusText = progress ? (progress === 'review' ? UI.statusRegen2 : UI.statusRegen1) : getStatusText(status);
             const statusClass = progress ? 'status-in-progress' : getStatusClass(status);
             const progressPct = progress === 'review' ? 100 : (progress === 'regenerate' ? 50 : 0);
@@ -2003,9 +2044,18 @@ function buildHtml(lang: Locale): string {
                 progressWrap.style.display = progressBarHtml ? 'block' : 'none';
             }
             const regenBtn = card.querySelector('#regen-btn-' + jobId);
-            if (regenBtn) regenBtn.style.display = (job.packComplete && !progress) ? 'inline-block' : 'none';
+            if (regenBtn) regenBtn.style.display = (hasReviewResult && !progress) ? 'inline-block' : 'none';
             const exportBtn = card.querySelector('#export-btn-' + jobId);
             if (exportBtn) exportBtn.style.display = (job.packComplete && !progress) ? 'inline-block' : 'none';
+            const advisoryBadge = card.querySelector('#review-advisory-' + jobId);
+            if (advisoryBadge) {
+                if (job.reviewVerdictFail) {
+                    advisoryBadge.textContent = UI.badgeReviewAdvisory;
+                    advisoryBadge.style.display = '';
+                } else {
+                    advisoryBadge.style.display = 'none';
+                }
+            }
             card.classList.toggle('is-generating', !!(isPackGenerationInFlight(job) || progress));
             card.classList.toggle('is-failed', !progress && isBatchJobFailed(job));
         }
@@ -2177,11 +2227,13 @@ function buildHtml(lang: Locale): string {
                 editOriginal = {
                     jd: data.jd || '',
                     companyInfo: data.companyInfo || '',
+                    jobLink: data.jobLink || '',
                     applicationTrack: data.applicationTrack || 'software-engineering'
                 };
                 editHasOutputs = !!data.hasGenerationOutputs;
                 document.getElementById('editJd').value = editOriginal.jd;
                 document.getElementById('editCompanyInfo').value = editOriginal.companyInfo;
+                document.getElementById('editJobLink').value = editOriginal.jobLink;
                 setTrackSelection('editApplicationTrack', editOriginal.applicationTrack);
                 updateEditUxState();
                 document.getElementById('editJobModal').style.display = 'flex';
@@ -2201,6 +2253,7 @@ function buildHtml(lang: Locale): string {
             if (!editJobId || !editOriginal) return;
             const jdText = document.getElementById('editJd').value.trim();
             const companyText = document.getElementById('editCompanyInfo').value.trim();
+            const jobLinkText = document.getElementById('editJobLink').value.trim();
             const applicationTrack = document.getElementById('editApplicationTrack').value || 'software-engineering';
 
             if (!jdText) {
@@ -2209,6 +2262,7 @@ function buildHtml(lang: Locale): string {
                 const dirty =
                     jdText !== editOriginal.jd.trim() ||
                     companyText !== (editOriginal.companyInfo || '').trim() ||
+                    jobLinkText !== (editOriginal.jobLink || '').trim() ||
                     applicationTrack !== editOriginal.applicationTrack;
                 if (dirty && editHasOutputs) {
                     if (!confirm(UI.msgEditClearedPackConfirm)) return;
@@ -2224,6 +2278,7 @@ function buildHtml(lang: Locale): string {
                     body: JSON.stringify({
                         jd: jdText,
                         companyInfo: companyText,
+                        jobLink: jobLinkText,
                         applicationTrack
                     })
                 });
@@ -2592,12 +2647,44 @@ function buildHtml(lang: Locale): string {
                 const res = await fetch('/api/archive', { method: 'POST' });
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error || '');
-                showMessage('✓ ' + UI.archiveSuccess + (data.archived || 0) + UI.archiveSuccessSuffix, 'success');
+                let msg = '✓ ' + UI.archiveSuccess + (data.archived || 0) + UI.archiveSuccessSuffix;
+                if (data.sheetWarnings && data.sheetWarnings.length) {
+                    msg += ' ' + UI.archiveSheetWarning;
+                }
+                showMessage(msg, data.sheetWarnings && data.sheetWarnings.length ? 'error' : 'success');
                 celebrateConfetti();
                 await renderApplyCounter();
                 refreshList();
             } catch (e) {
                 showMessage('✗ ' + e.message, 'error');
+            }
+        }
+
+        async function loadSubmissionSpreadsheetConfig() {
+            try {
+                const res = await fetch('/api/submission-spreadsheet');
+                const data = await res.json();
+                const el = document.getElementById('submissionSpreadsheet');
+                if (el && data.spreadsheetId) {
+                    el.value = 'https://docs.google.com/spreadsheets/d/' + data.spreadsheetId + '/edit';
+                }
+            } catch (_) { /* optional config */ }
+        }
+
+        async function saveSubmissionSpreadsheet() {
+            const el = document.getElementById('submissionSpreadsheet');
+            const value = el ? el.value.trim() : '';
+            try {
+                const res = await fetch('/api/submission-spreadsheet', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ spreadsheetId: value })
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || UI.requestFailed);
+                showMessage('✓ ' + UI.submissionSpreadsheetSaved, 'success');
+            } catch (e) {
+                showMessage('✗ ' + (e && e.message ? e.message : ''), 'error');
             }
         }
 
@@ -2649,6 +2736,7 @@ app.get('/api/jobs/:jobId', (req, res) => {
       jobId,
       jd: inputs.jd,
       companyInfo: inputs.companyInfo,
+      jobLink: inputs.jobLink,
       applicationTrack: inputs.applicationTrack,
       hasGenerationOutputs: view?.hasGenerationOutputs ?? false,
       inFlight,
@@ -2665,7 +2753,7 @@ app.get('/api/jobs/:jobId', (req, res) => {
 app.put('/api/jobs/:jobId', (req, res) => {
   try {
     const { jobId } = req.params;
-    const { jd, companyInfo, applicationTrack } = req.body ?? {};
+    const { jd, companyInfo, jobLink, applicationTrack } = req.body ?? {};
     if (
       applicationTrack != null &&
       applicationTrack !== '' &&
@@ -2678,6 +2766,7 @@ app.put('/api/jobs/:jobId', (req, res) => {
     const result = pack.editJob(jobId, {
       jd: typeof jd === 'string' ? jd : '',
       companyInfo: typeof companyInfo === 'string' ? companyInfo : '',
+      jobLink: typeof jobLink === 'string' ? jobLink : '',
       applicationTrack: (applicationTrack as TrackId) || 'software-engineering',
     });
     res.json({ success: true, ...result });
@@ -2697,7 +2786,7 @@ app.put('/api/jobs/:jobId', (req, res) => {
 // API: 添加 job（公司信息 + JD 两个独立输入）
 app.post('/api/ingest', (req, res) => {
   try {
-    const { jd, companyInfo, applicationTrack } = req.body;
+    const { jd, companyInfo, jobLink, applicationTrack } = req.body;
 
     if (!jd || !jd.trim()) {
       return res.status(400).json({ error: 'Job description (jd) is required' });
@@ -2716,12 +2805,15 @@ app.post('/api/ingest', (req, res) => {
     const jdText = jd.trim();
     const companyText =
       companyInfo && typeof companyInfo === 'string' ? companyInfo.trim() : '';
+    const linkText =
+      jobLink && typeof jobLink === 'string' ? jobLink.trim() : '';
     const timestamp = Date.now();
     const jobId = `${timestamp}`;
 
     pack.saveJobInputs(jobId, {
       jd: jdText,
       companyInfo: companyText,
+      jobLink: linkText,
       applicationTrack: trackId,
     });
 
@@ -2766,7 +2858,13 @@ app.get('/api/results/:jobId', (req, res) => {
       summary: results.summary,
       coverLetter: results.coverLetter,
       review: results.review,
-      jobLabel: pack.readJobLabel(jobId),
+      ...(() => {
+        const identity = pack.readJobIdentity(jobId);
+        return {
+          roleTitle: identity.roleTitle,
+          employerName: identity.employerName,
+        };
+      })(),
       regenerateFeedback: results.regenerateFeedback,
       truncated: results.truncation,
     });
@@ -2825,6 +2923,28 @@ app.put('/api/export-directory', (req, res) => {
     res.json({ success: true, path });
   } catch (error) {
     res.status(500).json({
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+app.get('/api/submission-spreadsheet', (_req, res) => {
+  res.json({ spreadsheetId: readSubmissionSpreadsheetId(pack.workspaceRoot) });
+});
+
+app.put('/api/submission-spreadsheet', (req, res) => {
+  try {
+    const raw =
+      typeof req.body?.spreadsheetId === 'string'
+        ? req.body.spreadsheetId.trim()
+        : '';
+    if (!raw) {
+      return res.status(400).json({ error: 'spreadsheetId is required' });
+    }
+    const spreadsheetId = writeSubmissionSpreadsheetId(pack.workspaceRoot, raw);
+    res.json({ success: true, spreadsheetId });
+  } catch (error) {
+    res.status(400).json({
       error: error instanceof Error ? error.message : 'Unknown error',
     });
   }
@@ -2940,24 +3060,29 @@ app.get('/api/archive/:jobId', (req, res) => {
 });
 
 // 全部存档（当前工作区所有 job）
-app.post('/api/archive', (req, res) => {
+app.post('/api/archive', async (req, res) => {
   try {
-    const jobIds = archiveAllJobs();
-    res.json({ success: true, archived: jobIds.length, jobIds });
+    const { jobIds, sheetWarnings } = await archiveAllJobs();
+    res.json({
+      success: true,
+      archived: jobIds.length,
+      jobIds,
+      sheetWarnings,
+    });
   } catch (error) {
     res.status(500).json({ error: error instanceof Error ? error.message : 'Unknown error' });
   }
 });
 
 // 单个 job 归档（计一次 Application Submission）
-app.post('/api/archive/:jobId', (req, res) => {
+app.post('/api/archive/:jobId', async (req, res) => {
   try {
     const { jobId } = req.params;
     if (!jobId || jobId === 'restore') {
       return res.status(400).json({ error: 'Invalid jobId' });
     }
-    archiveJob(jobId);
-    res.json({ success: true, jobId });
+    const result = await archiveJob(jobId);
+    res.json({ success: true, ...result });
   } catch (error) {
     res.status(404).json({ error: error instanceof Error ? error.message : 'Unknown error' });
   }

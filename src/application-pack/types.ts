@@ -7,8 +7,15 @@ import type { Status } from '../types/outputs.js';
 export type JobInputs = {
   companyInfo: string;
   jd: string;
+  /** Optional job posting URL — authoritative source for Submission Sheet Link. */
+  jobLink?: string;
   /** Immutable Application Track binding for this Job. */
   applicationTrack: TrackId;
+};
+
+export type JobIdentity = {
+  roleTitle?: string;
+  employerName?: string;
 };
 
 export type PackTruncation = {
@@ -78,8 +85,10 @@ export type JobView = {
   status: Status | null;
   /** In-flight regenerate phase, when any. */
   progress?: string;
-  /** True when the review step is completed. */
+  /** True when the Application Pack is complete (review completed with minted identity). */
   packComplete: boolean;
+  /** True when the latest Review Verdict is FAIL (advisory only). */
+  reviewVerdictFail: boolean;
   /** True when any generation output (complete or partial) exists under this Job. */
   hasGenerationOutputs: boolean;
   /**

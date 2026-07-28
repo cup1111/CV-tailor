@@ -64,15 +64,10 @@ export async function generateCommand(options: {
         const profile =
           options.profile ??
           loadProfileForTrack(pack.workspaceRoot, track);
-        const { reviewFailed } = await pack.generatePack(jobId, {
+        await pack.generatePack(jobId, {
           profile,
           model: openai,
         });
-        if (reviewFailed) {
-          console.log(
-            `⚠️ Review returned FAIL. Use the "Regenerate" button in the UI to re-run with feedback.`
-          );
-        }
         console.log(`✅ Job ${jobId} completed!\n`);
       })
     )

@@ -1,6 +1,6 @@
 import type { PackStore } from './store.js';
 import type { JobView } from './types.js';
-import { isPackComplete } from './job-label.js';
+import { isPackComplete, reconcileReviewStep } from './job-identity.js';
 
 function displayJd(jd: string): { title: string; content: string } {
   let jdContent = jd;
@@ -20,6 +20,7 @@ function displayJd(jd: string): { title: string; content: string } {
 
 /** Build the read-only workspace view for one job. */
 export function buildJobView(store: PackStore, jobId: string): JobView {
+  reconcileReviewStep(store, jobId);
   const inputs = store.loadJobInputs(jobId);
   const { title, content } = displayJd(inputs.jd);
   const status = store.readStatus(jobId);
@@ -31,6 +32,7 @@ export function buildJobView(store: PackStore, jobId: string): JobView {
     status,
     progress: store.getProgress(jobId),
     packComplete: isPackComplete(store, jobId),
+    reviewVerdictFail: store.hasReviewVerdictFail(jobId),
     hasGenerationOutputs: store.hasGenerationOutputs(jobId),
     applicationTrack: inputs.applicationTrack,
   };
@@ -41,5 +43,10 @@ export function listJobs(store: PackStore): JobView[] {
 }
 
 export function listIncompleteJobIds(store: PackStore): string[] {
-  return store.listJobIds().filter((id) => !isPackComplete(store, id));
+  return store
+    .listJobIds()
+    .filter((id) => {
+      reconcileReviewStep(store, id);
+      return !isPackComplete(store, id);
+    });
 }

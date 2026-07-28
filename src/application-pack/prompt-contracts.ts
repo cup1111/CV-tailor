@@ -3,7 +3,7 @@ import type { z } from 'zod';
 import { loadTemplate, type Template } from '../services/template.js';
 import type { Status } from '../types/outputs.js';
 import { extractExperienceBullets } from './extract.js';
-import { settleReviewStep } from './job-label.js';
+import { settleReviewStep } from './job-identity.js';
 import type { PackStore } from './store.js';
 import type { ModelPort } from './types.js';
 

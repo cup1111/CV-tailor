@@ -36,9 +36,9 @@ const profile: Profile = {
 };
 
 describe('buildResumeExportBasename', () => {
-  it('builds "{name} CV {Job Label}" for Pages and PDF stems', () => {
+  it('builds "{name} CV {Role Title} - {Employer Name}" for Pages and PDF stems', () => {
     expect(
-      buildResumeExportBasename('Zane Wang', 'Software Engineer - Acme')
+      buildResumeExportBasename('Zane Wang', 'Software Engineer', 'Acme')
     ).toBe('Zane Wang CV Software Engineer - Acme');
   });
 });
@@ -122,9 +122,9 @@ describe('exportResume', () => {
       experienceBullets:
         'PastCo - Engineer\nBuilt APIs\nShipped features\n\nOldCo - Intern\nWrote scripts',
       coverLetter: 'Cover',
-      review: 'PASS\nJob Label: Software Engineer - Acme\nOk',
+      review: 'PASS\nRole Title: Software Engineer\nEmployer Name: Acme\nOk',
     });
-    store.writeJobLabel('j1', 'Software Engineer - Acme');
+    store.writeJobIdentity('j1', 'Software Engineer', 'Acme');
     store.getOrCreateStatus('j1');
     store.updateStepStatus('j1', 'review', 'completed');
 
@@ -172,12 +172,25 @@ describe('exportResume', () => {
   });
 
   it('rejects export when Application Pack is not complete', async () => {
-    store.updateStepStatus('j1', 'review', 'pending');
+    store.saveJobInputs('j2', {
+      companyInfo: '',
+      jd: 'Another backend role',
+      applicationTrack: 'software-engineering',
+    });
+    store.writeArtifacts('j2', {
+      summary: 'Engineer with API focus.',
+      experienceBullets:
+        'PastCo - Engineer\nBuilt APIs\nShipped features\n\nOldCo - Intern\nWrote scripts',
+      coverLetter: 'Cover',
+      review: 'PASS\nLooks good.',
+    });
+    store.getOrCreateStatus('j2');
+    store.updateStepStatus('j2', 'review', 'pending');
     await expect(
       exportResume({
         store,
         workspaceRoot: root,
-        jobId: 'j1',
+        jobId: 'j2',
         profile,
         pages: fakePages(['SUMMARY', 'EXP_1', 'EXP_2']),
       })

@@ -25,6 +25,7 @@ import {
 import type {
   ApplicationPack,
   ApplicationPackModuleOptions,
+  JobIdentity,
   JobInputs,
   JobView,
   ModelPort,
@@ -33,6 +34,7 @@ import type {
 export type {
   ApplicationPack,
   ApplicationPackModuleOptions,
+  JobIdentity,
   JobInputs,
   JobView,
   ModelPort,
@@ -55,7 +57,7 @@ export type ApplicationPackModule = {
   /** Job IDs whose Application Pack review step is not yet completed. */
   listIncompleteJobIds(): string[];
   readPack(jobId: string): ApplicationPack;
-  readJobLabel(jobId: string): string | undefined;
+  readJobIdentity(jobId: string): JobIdentity;
   /** Test/support: seed artifacts without going through generatePack. */
   writeArtifacts(jobId: string, artifacts: ArtifactWrite): void;
   deleteJob(jobId: string): void;
@@ -63,7 +65,7 @@ export type ApplicationPackModule = {
   generatePack(
     jobId: string,
     options: { model: ModelPort; profile?: Profile }
-  ): Promise<{ reviewFailed: boolean }>;
+  ): Promise<void>;
   regeneratePack(
     jobId: string,
     feedback: string,
@@ -119,7 +121,7 @@ export function createApplicationPackModule(
     listJobs: () => listJobs(store),
     listIncompleteJobIds: () => listIncompleteJobIds(store),
     readPack: (jobId) => store.readPack(jobId),
-    readJobLabel: (jobId) => store.readJobLabel(jobId),
+    readJobIdentity: (jobId) => store.readJobIdentity(jobId),
     writeArtifacts: (jobId, artifacts) => store.writeArtifacts(jobId, artifacts),
     deleteJob: (jobId) => store.deleteJob(jobId),
     clearAllJobsAndOutputs: () => store.clearAllJobsAndOutputs(),

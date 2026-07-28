@@ -9,8 +9,13 @@ import {
   statSync,
 } from 'fs';
 import { join } from 'path';
+import { PackStore } from '../application-pack/store.js';
 import { migrateJobTrackBindings } from './track.js';
-import { recordSubmission } from './submission-ledger.js';
+import { recordSubmission, sydneyDateKey } from './submission-ledger.js';
+import {
+  appendSubmissionSheetEntry,
+  buildSubmissionSheetEntry,
+} from './submission-sheet.js';
 
 const ARCHIVE_DIR = 'archive';
 const JOBS_DIR = 'jobs';
@@ -160,26 +165,41 @@ export function listArchive(options: {
   };
 }
 
+export type ArchiveResult = {
+  jobId: string;
+  isNewSubmission: boolean;
+  sheetWarning?: string;
+};
+
 /**
  * 将工作区的一个 job 移动到存档
  */
-export function archiveJob(jobId: string): void {
-  const jobsDir = join(process.cwd(), JOBS_DIR);
-  const outDir = join(process.cwd(), OUT_DIR);
+export async function archiveJob(
+  jobId: string,
+  workspaceRoot: string = process.cwd()
+): Promise<ArchiveResult> {
+  const jobsDir = join(workspaceRoot, JOBS_DIR);
+  const outDir = join(workspaceRoot, OUT_DIR);
   const jdPath = join(jobsDir, `${jobId}.md`);
   const companyPath = join(jobsDir, `${jobId}.company.txt`);
+  const linkPath = join(jobsDir, `${jobId}.link.txt`);
   const outJobDir = join(outDir, jobId);
 
   if (!existsSync(jdPath)) {
     throw new Error(`Job not found: ${jobId}`);
   }
 
+  const submissionDate = sydneyDateKey();
+  const store = new PackStore(workspaceRoot);
+  const sheetEntry = buildSubmissionSheetEntry(store, jobId, submissionDate);
+
   const date = getDateFromJobId(jobId);
-  const destDir = join(getArchiveRoot(), date, jobId);
-  if (!existsSync(getArchiveRoot())) {
-    mkdirSync(getArchiveRoot(), { recursive: true });
+  const destDir = join(workspaceRoot, ARCHIVE_DIR, date, jobId);
+  const archiveRoot = join(workspaceRoot, ARCHIVE_DIR);
+  if (!existsSync(archiveRoot)) {
+    mkdirSync(archiveRoot, { recursive: true });
   }
-  const dateDir = join(getArchiveRoot(), date);
+  const dateDir = join(archiveRoot, date);
   if (!existsSync(dateDir)) {
     mkdirSync(dateDir, { recursive: true });
   }
@@ -190,6 +210,9 @@ export function archiveJob(jobId: string): void {
   renameSync(jdPath, join(destDir, 'jd.md'));
   if (existsSync(companyPath)) {
     renameSync(companyPath, join(destDir, 'company.txt'));
+  }
+  if (existsSync(linkPath)) {
+    renameSync(linkPath, join(destDir, 'link.txt'));
   }
   const trackPath = join(jobsDir, `${jobId}.track.txt`);
   if (existsSync(trackPath)) {
@@ -203,21 +226,39 @@ export function archiveJob(jobId: string): void {
     rmSync(outJobDir, { recursive: true, force: true });
   }
 
-  recordSubmission(process.cwd(), jobId);
+  const isNewSubmission = recordSubmission(workspaceRoot, jobId, submissionDate);
+  let sheetWarning: string | undefined;
+  if (isNewSubmission) {
+    try {
+      await appendSubmissionSheetEntry(workspaceRoot, sheetEntry);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error('Submission Sheet append failed:', message);
+      sheetWarning = message;
+    }
+  }
+
+  return { jobId, isNewSubmission, sheetWarning };
 }
 
 /**
  * 批量归档当前工作区所有 job
  */
-export function archiveAllJobs(): string[] {
-  const jobsDir = join(process.cwd(), JOBS_DIR);
-  if (!existsSync(jobsDir)) return [];
+export async function archiveAllJobs(
+  workspaceRoot: string = process.cwd()
+): Promise<{ jobIds: string[]; sheetWarnings: string[] }> {
+  const jobsDir = join(workspaceRoot, JOBS_DIR);
+  if (!existsSync(jobsDir)) return { jobIds: [], sheetWarnings: [] };
   const files = readdirSync(jobsDir).filter((f) => f.endsWith('.md'));
   const jobIds = files.map((f) => f.replace('.md', ''));
+  const sheetWarnings: string[] = [];
   for (const jobId of jobIds) {
-    archiveJob(jobId);
+    const result = await archiveJob(jobId, workspaceRoot);
+    if (result.sheetWarning) {
+      sheetWarnings.push(`${jobId}: ${result.sheetWarning}`);
+    }
   }
-  return jobIds;
+  return { jobIds, sheetWarnings };
 }
 
 /**
@@ -269,8 +310,16 @@ export function restoreJob(jobId: string): void {
     renameSync(trackSrc, trackPath);
   }
 
+  const linkSrc = join(archiveJobDir, 'link.txt');
+  const linkPath = join(jobsDir, `${jobId}.link.txt`);
+  if (existsSync(linkSrc)) {
+    renameSync(linkSrc, linkPath);
+  }
+
   for (const f of readdirSync(archiveJobDir)) {
-    if (f === 'jd.md' || f === 'company.txt' || f === 'track.txt') continue;
+    if (f === 'jd.md' || f === 'company.txt' || f === 'track.txt' || f === 'link.txt') {
+      continue;
+    }
     const src = join(archiveJobDir, f);
     if (statSync(src).isFile()) {
       renameSync(src, join(outJobDir, f));

@@ -34,6 +34,7 @@ describe('Job Edit', () => {
     expect(pack.loadJobInputs('j1')).toEqual({
       companyInfo: '',
       jd: 'Updated JD',
+      jobLink: '',
       applicationTrack: 'it-support',
     });
   });
