@@ -33,7 +33,9 @@ function createFakeModel(overrides?: {
   callCounts?: { webSearch: number; text: number; json: number };
 }): ModelPort {
   const counts = overrides?.callCounts ?? { webSearch: 0, text: 0, json: 0 };
-  const reviewText = overrides?.reviewText ?? 'PASS\nLooks good.';
+  const reviewText =
+    overrides?.reviewText ??
+    'PASS\nJob Label: Software Engineer - Acme\nLooks good.';
 
   return {
     async webSearch(query: string) {
@@ -161,7 +163,7 @@ describe('Application Pack lifecycle', () => {
         '||\nPastCo - Engineer\n- Shipped APIs\n||',
         'Summary text',
         'Cover letter text',
-        'PASS\nGood fit.',
+        'PASS\nJob Label: Backend Engineer - Acme\nGood fit.',
       ],
     });
 
@@ -197,7 +199,7 @@ describe('Application Pack lifecycle', () => {
         '||\nPastCo - Engineer\n- Bullet\n||',
         'Summary',
         'Cover',
-        'PASS',
+        'PASS\nJob Label: Engineer - ExampleCo\nOk',
       ],
     });
     await pack.generatePack('j2', { profile: sampleProfile, model: model1 });
@@ -226,7 +228,7 @@ describe('Application Pack lifecycle', () => {
         '||\nPastCo - Engineer\n- B\n||',
         'Summary original',
         'Cover original',
-        'FAIL\nNeeds better JD fit.',
+        'FAIL\nJob Label: Role - Company\nNeeds better JD fit.',
       ],
       json: {
         summary: 'Should not appear',
@@ -296,7 +298,7 @@ describe('Application Pack lifecycle', () => {
       generateJson: model.generateJson.bind(model),
       async generateText() {
         textPhase += 1;
-        return 'PASS\nAfter regenerate.';
+        return 'PASS\nJob Label: Backend Engineer - Acme\nAfter regenerate.';
       },
     };
 
@@ -335,7 +337,7 @@ describe('Application Pack lifecycle', () => {
         '||\nPastCo - Engineer\n- B\n||',
         'Summary',
         'Cover',
-        'PASS',
+        'PASS\nJob Label: Helpdesk Analyst - Contoso\nOk',
       ],
     });
     await pack.generatePack('track-job', { profile: sampleProfile, model });

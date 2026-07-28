@@ -14,6 +14,7 @@ import {
   JobEditBlockedError,
   JobNotFoundError,
 } from './application-pack/index.js';
+import { createPagesPort } from './services/pages-port.js';
 import { PACK_GENERATION_STEPS } from './application-pack/batch-progress.js';
 import { UI_STRINGS, type Locale } from './i18n.js';
 import { getDailyThemeName, renderDailyThemeCss } from './ui/daily-theme.js';
@@ -508,6 +509,10 @@ function buildHtml(lang: Locale): string {
         }
         button.success:hover {
             background-color: #218838;
+        }
+        button.export-done {
+            background-color: #1e7e34;
+            box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.35);
         }
         button:disabled {
             background-color: #6c757d;
@@ -1700,6 +1705,9 @@ function buildHtml(lang: Locale): string {
             document.querySelectorAll('[id^="regen-btn-"]').forEach(function(btn) {
                 if (btn.style.display !== 'none') btn.disabled = disabled;
             });
+            document.querySelectorAll('[id^="export-btn-"]').forEach(function(btn) {
+                if (btn.style.display !== 'none') btn.disabled = disabled;
+            });
         }
 
         function syncGenerationLocks() {
@@ -1924,7 +1932,8 @@ function buildHtml(lang: Locale): string {
                                 \${editBtn}
                                 <button onclick="toggleJdContent('\${job.id}')">📄 \${UI.btnViewJd}</button>
                                 <button onclick="viewResults('\${job.id}')">📊 \${UI.btnViewResults}</button>
-                                <button type="button" onclick="openRegenerateModal('\${job.id}')" class="success" id="regen-btn-\${job.id}" style="display:\${status?.steps?.review === 'completed' && !progress ? 'inline-block' : 'none'}"\${genDisabled}>♻️ \${UI.btnRegenerate}</button>
+                                <button type="button" onclick="openRegenerateModal('\${job.id}')" class="success" id="regen-btn-\${job.id}" style="display:\${job.packComplete && !progress ? 'inline-block' : 'none'}"\${genDisabled}>♻️ \${UI.btnRegenerate}</button>
+                                <button type="button" onclick="exportResume('\${job.id}')" class="success" id="export-btn-\${job.id}" style="display:\${job.packComplete && !progress ? 'inline-block' : 'none'}"\${genDisabled}>📄 \${UI.btnExportResume}</button>
                                 <button type="button" class="success" onclick="archiveOneJob('\${job.id}')">🗂️ \${UI.btnArchiveJob}</button>
                                 <button onclick="deleteJob('\${job.id}')" class="danger">🗑️ \${UI.btnDelete}</button>
                             </div>
@@ -1994,9 +2003,77 @@ function buildHtml(lang: Locale): string {
                 progressWrap.style.display = progressBarHtml ? 'block' : 'none';
             }
             const regenBtn = card.querySelector('#regen-btn-' + jobId);
-            if (regenBtn) regenBtn.style.display = (status && status.steps && status.steps.review === 'completed' && !progress) ? 'inline-block' : 'none';
+            if (regenBtn) regenBtn.style.display = (job.packComplete && !progress) ? 'inline-block' : 'none';
+            const exportBtn = card.querySelector('#export-btn-' + jobId);
+            if (exportBtn) exportBtn.style.display = (job.packComplete && !progress) ? 'inline-block' : 'none';
             card.classList.toggle('is-generating', !!(isPackGenerationInFlight(job) || progress));
             card.classList.toggle('is-failed', !progress && isBatchJobFailed(job));
+        }
+
+        async function exportResume(jobId) {
+            const btn = document.getElementById('export-btn-' + jobId);
+            const labelIdle = '📄 ' + UI.btnExportResume;
+            function restoreExportBtn() {
+                if (!btn) return;
+                if (btn._exportResetTimer) {
+                    clearTimeout(btn._exportResetTimer);
+                    btn._exportResetTimer = null;
+                }
+                btn.classList.remove('export-done');
+                btn.textContent = labelIdle;
+                btn.disabled = isGenerationLocked();
+            }
+            function markExportDone() {
+                if (!btn) return;
+                btn.disabled = true;
+                btn.classList.add('export-done');
+                btn.textContent = '✓ ' + UI.btnExported;
+                if (btn._exportResetTimer) clearTimeout(btn._exportResetTimer);
+                btn._exportResetTimer = setTimeout(restoreExportBtn, 2500);
+            }
+            try {
+                let dirRes = await fetch('/api/export-directory');
+                let dirData = await dirRes.json();
+                let exportDirectory = dirData.path || '';
+                if (!exportDirectory) {
+                    const entered = prompt(UI.exportDirectoryPrompt, '');
+                    if (!entered || !entered.trim()) {
+                        showMessage(UI.exportNeedDirectory, 'error');
+                        return;
+                    }
+                    exportDirectory = entered.trim();
+                    await fetch('/api/export-directory', {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ path: exportDirectory }),
+                    });
+                }
+                if (btn) {
+                    if (btn._exportResetTimer) {
+                        clearTimeout(btn._exportResetTimer);
+                        btn._exportResetTimer = null;
+                    }
+                    btn.disabled = true;
+                    btn.classList.remove('export-done');
+                    btn.textContent = UI.btnExporting;
+                }
+                const res = await fetch('/api/export/' + encodeURIComponent(jobId), {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({}),
+                });
+                const data = await res.json();
+                if (!res.ok) {
+                    restoreExportBtn();
+                    showMessage(UI.exportFailed + (data.error || res.statusText), 'error');
+                    return;
+                }
+                markExportDone();
+                showMessage(UI.exportSuccess + data.pagesPath + '\\n' + data.pdfPath, 'success');
+            } catch (e) {
+                restoreExportBtn();
+                showMessage(UI.exportFailed + (e && e.message ? e.message : String(e)), 'error');
+            }
         }
 
         // 查看结果
@@ -2029,64 +2106,6 @@ function buildHtml(lang: Locale): string {
                 }
 
                 let html = '';
-                if (results.hasCompanyInfo) {
-                    html += '<div class="results-mode-banner has-company">' + UI.resultsBannerCompany + '</div>';
-                } else {
-                    html += '<div class="results-mode-banner jd-only">' + UI.resultsBannerJdOnly + '</div>';
-                }
-                if (results.truncated && (results.truncated.companyResearch || results.truncated.painPoints || results.truncated.mapping)) {
-                    const parts = [];
-                    if (results.truncated.companyResearch) parts.push(UI.truncationCompany);
-                    if (results.truncated.painPoints) parts.push(UI.truncationPainPoints);
-                    if (results.truncated.mapping) parts.push(UI.truncationMapping);
-                    html += '<div class="results-mode-banner truncation-warning">⚠️ ' + UI.resultsTruncation + parts.join(UI.truncationSep) + UI.resultsTruncationSuffix + '</div>';
-                }
-
-                if (results.companyProfile) {
-                    html += \`
-                        <div class="result-section">
-                            <h4>🏢 \${UI.resultCompanyProfile}</h4>
-                            <div class="result-content">\${escapeHtml(results.companyProfile)}</div>
-                        </div>
-                    \`;
-                }
-
-                if (results.summary) {
-                    const whitespaceRegex = /[\\s\\n\\r\\t]+/g;
-                    const cleanedSummary = results.summary.replace(whitespaceRegex, ' ').trim();
-                    const summaryEscaped = escapeHtml(cleanedSummary);
-                    html += \`
-                        <div class="result-section">
-                            <h4>📄 \${UI.resultSummary}</h4>
-                            <div class="result-content-wrap">
-                                <button type="button" class="copy-btn" onclick="copyResultSection(this)" title="\${UI.copyBtn}">\${UI.copyBtn}</button>
-                                <div class="result-content">\${summaryEscaped}</div>
-                            </div>
-                        </div>
-                    \`;
-                }
-
-                if (results.experienceBullets) {
-                    var expText = results.experienceBullets.trim();
-                    var expBlocks = expText.split(/(?:\\r?\\n)+(?=[^\\n]+\\s+-\\s+[^\\n]+(?=\\r?\\n|$))/).filter(Boolean);
-                    if (expBlocks.length === 0) expBlocks = [expText];
-                    html += '<div class="result-section"><h4>📝 ' + UI.resultExperience + '</h4></div>';
-                    for (var i = 0; i < expBlocks.length; i++) {
-                        var block = expBlocks[i];
-                        var nl = block.indexOf('\\n');
-                        var blockTitle = nl >= 0 ? block.slice(0, nl).trim() : block.trim();
-                        var blockBody = nl >= 0 ? block.slice(nl + 1).trim() : '';
-                        html += \`
-                            <div class="result-section result-subsection">
-                                <h4>\${escapeHtml(blockTitle)}</h4>
-                                <div class="result-content-wrap">
-                                    <button type="button" class="copy-btn" onclick="copyResultSection(this)" title="\${UI.copyBtn}">\${UI.copyBtn}</button>
-                                    <div class="result-content">\${escapeHtml(blockBody)}</div>
-                                </div>
-                            </div>
-                        \`;
-                    }
-                }
 
                 if (results.coverLetter) {
                     html += \`
@@ -2100,37 +2119,19 @@ function buildHtml(lang: Locale): string {
                     \`;
                 }
 
-                if (results.mapping) {
-                    html += \`
-                        <div class="result-section">
-                            <h4>🗺️ \${UI.resultMapping}</h4>
-                            <div class="result-content">\${escapeHtml(results.mapping)}</div>
-                        </div>
-                    \`;
-                }
-
                 if (results.review) {
                     html += \`
                         <div class="result-section">
                             <h4>🔎 \${UI.resultReview}</h4>
-                            <div class="result-content">\${escapeHtml(results.review)}</div>
-                        </div>
-                    \`;
-                }
-                if (results.regenerateFeedback) {
-                    html += \`
-                        <div class="result-section">
-                            <h4>📋 \${UI.resultRegenFeedback}</h4>
-                            <div class="regen-fb-content result-content regenerate-feedback-md">\${escapeHtml(results.regenerateFeedback)}</div>
+                            <div class="result-content-wrap">
+                                <button type="button" class="copy-btn" onclick="copyResultSection(this)" title="\${UI.copyBtn}">\${UI.copyBtn}</button>
+                                <div class="result-content">\${escapeHtml(results.review)}</div>
+                            </div>
                         </div>
                     \`;
                 }
 
                 panel.innerHTML = html || ('<p>' + UI.msgNoResults + '</p>');
-                const fbDiv = panel.querySelector('.regen-fb-content');
-                if (fbDiv && results.regenerateFeedback && typeof marked !== 'undefined') {
-                    fbDiv.innerHTML = marked.parse(results.regenerateFeedback);
-                }
             } catch (error) {
                 panel.innerHTML = '<p class="error">' + UI.msgLoadFailed + error.message + '</p>';
             }
@@ -2765,6 +2766,7 @@ app.get('/api/results/:jobId', (req, res) => {
       summary: results.summary,
       coverLetter: results.coverLetter,
       review: results.review,
+      jobLabel: pack.readJobLabel(jobId),
       regenerateFeedback: results.regenerateFeedback,
       truncated: results.truncation,
     });
@@ -2803,6 +2805,49 @@ app.post('/api/regenerate/:jobId', async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+app.get('/api/export-directory', (_req, res) => {
+  res.json({ path: pack.getExportDirectory() });
+});
+
+app.put('/api/export-directory', (req, res) => {
+  try {
+    const path =
+      typeof req.body?.path === 'string' ? req.body.path.trim() : '';
+    if (!path) {
+      return res.status(400).json({ error: 'path is required' });
+    }
+    pack.setExportDirectory(path);
+    res.json({ success: true, path });
+  } catch (error) {
+    res.status(500).json({
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+app.post('/api/export/:jobId', async (req, res) => {
+  try {
+    const { jobId } = req.params;
+    const exportDirectory =
+      typeof req.body?.exportDirectory === 'string'
+        ? req.body.exportDirectory.trim()
+        : undefined;
+    const result = await pack.exportResume(jobId, {
+      pages: createPagesPort(),
+      exportDirectory: exportDirectory || undefined,
+    });
+    res.json({
+      success: true,
+      pagesPath: result.pagesPath,
+      pdfPath: result.pdfPath,
+    });
+  } catch (error) {
+    res.status(400).json({
       error: error instanceof Error ? error.message : 'Unknown error',
     });
   }

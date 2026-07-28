@@ -10,5 +10,7 @@ submission-ledger.json
 jobs/
 profile.yaml
 tracks/*/profile.yaml
+tracks/*/resume-layout.pages
+export-directory.txt
 # Legacy workspace activeTrack — migration-only if present locally (ADR-0003)
 track.yaml

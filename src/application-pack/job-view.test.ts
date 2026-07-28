@@ -64,6 +64,7 @@ describe('Application Pack job view', () => {
     });
     const outB = join(root, 'out', 'b');
     mkdirSync(outB, { recursive: true });
+    writeFileSync(join(outB, 'job-label.txt'), 'Engineer - CompleteCo');
     writeFileSync(
       join(outB, 'status.json'),
       JSON.stringify({

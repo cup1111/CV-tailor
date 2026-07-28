@@ -1,5 +1,6 @@
 import type { PackStore } from './store.js';
 import type { JobView } from './types.js';
+import { isPackComplete } from './job-label.js';
 
 function displayJd(jd: string): { title: string; content: string } {
   let jdContent = jd;
@@ -29,7 +30,7 @@ export function buildJobView(store: PackStore, jobId: string): JobView {
     hasCompanyInfo: store.hasCompanyInfo(jobId),
     status,
     progress: store.getProgress(jobId),
-    packComplete: status?.steps.review === 'completed',
+    packComplete: isPackComplete(store, jobId),
     hasGenerationOutputs: store.hasGenerationOutputs(jobId),
     applicationTrack: inputs.applicationTrack,
   };
@@ -40,5 +41,5 @@ export function listJobs(store: PackStore): JobView[] {
 }
 
 export function listIncompleteJobIds(store: PackStore): string[] {
-  return store.listJobIds().filter((id) => !store.isStepCompleted(id, 'review'));
+  return store.listJobIds().filter((id) => !isPackComplete(store, id));
 }
