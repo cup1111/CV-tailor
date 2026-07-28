@@ -533,6 +533,8 @@ function buildHtml(lang: Locale): string {
             padding: 15px;
             border-radius: 4px;
             margin-top: 20px;
+            white-space: pre-wrap;
+            word-break: break-word;
         }
         .success {
             background-color: #d4edda;
@@ -1517,10 +1519,12 @@ function buildHtml(lang: Locale): string {
                 const res = await fetch('/api/archive/' + encodeURIComponent(jobId), { method: 'POST' });
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error || UI.requestFailed);
-                celebrateConfetti();
-                let msg = '🎉 ' + UI.applySuccess;
-                if (data.sheetWarning) msg += ' ' + UI.archiveSheetWarning;
-                showMessage(msg, data.sheetWarning ? 'error' : 'success');
+                if (data.sheetWarning) {
+                    showMessage('⚠️ ' + UI.archiveSheetWarning + '\n' + data.sheetWarning, 'error');
+                } else {
+                    celebrateConfetti();
+                    showMessage('🎉 ' + UI.applySuccess, 'success');
+                }
                 await renderApplyCounter();
                 refreshList();
             } catch (e) {
@@ -2482,14 +2486,15 @@ function buildHtml(lang: Locale): string {
         }
 
         // 显示消息
-        function showMessage(text, type) {
+        function showMessage(text, type, durationMs) {
             const messageDiv = document.getElementById('message');
             messageDiv.className = 'message ' + type;
             messageDiv.textContent = text;
+            const timeout = durationMs || (type === 'error' ? 15000 : 5000);
             setTimeout(() => {
                 messageDiv.className = '';
                 messageDiv.textContent = '';
-            }, 5000);
+            }, timeout);
         }
 
         // ========== 工作区 | 存档区 导航 ==========
@@ -2647,12 +2652,13 @@ function buildHtml(lang: Locale): string {
                 const res = await fetch('/api/archive', { method: 'POST' });
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error || '');
-                let msg = '✓ ' + UI.archiveSuccess + (data.archived || 0) + UI.archiveSuccessSuffix;
+                const msg = '✓ ' + UI.archiveSuccess + (data.archived || 0) + UI.archiveSuccessSuffix;
                 if (data.sheetWarnings && data.sheetWarnings.length) {
-                    msg += ' ' + UI.archiveSheetWarning;
+                    showMessage('⚠️ ' + UI.archiveSheetWarning + '\n' + data.sheetWarnings.join('\n'), 'error');
+                } else {
+                    celebrateConfetti();
+                    showMessage(msg, 'success');
                 }
-                showMessage(msg, data.sheetWarnings && data.sheetWarnings.length ? 'error' : 'success');
-                celebrateConfetti();
                 await renderApplyCounter();
                 refreshList();
             } catch (e) {

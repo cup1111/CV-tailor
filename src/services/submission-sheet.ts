@@ -80,6 +80,24 @@ function loadServiceAccountCredentials(): Record<string, unknown> | null {
   return null;
 }
 
+/** Turn Google API errors into actionable archive warnings. */
+export function formatSubmissionSheetError(
+  error: unknown,
+  credentials: Record<string, unknown> | null
+): string {
+  const message = error instanceof Error ? error.message : String(error);
+  const email =
+    credentials && typeof credentials.client_email === 'string'
+      ? credentials.client_email
+      : null;
+
+  if (/does not have permission/i.test(message) && email) {
+    return `Spreadsheet not shared with the service account. In Google Sheets, click Share and add ${email} as Editor.`;
+  }
+
+  return message;
+}
+
 export async function appendSubmissionSheetEntry(
   workspaceRoot: string,
   entry: SubmissionSheetEntry
@@ -99,13 +117,17 @@ export async function appendSubmissionSheetEntry(
     scopes: ['https://www.googleapis.com/auth/spreadsheets'],
   });
   const sheets = google.sheets({ version: 'v4', auth });
-  await sheets.spreadsheets.values.append({
-    spreadsheetId,
-    range: `${SUBMISSION_WORKSHEET_NAME}!A:H`,
-    valueInputOption: 'USER_ENTERED',
-    insertDataOption: 'INSERT_ROWS',
-    requestBody: {
-      values: [entryToSheetRow(entry)],
-    },
-  });
+  try {
+    await sheets.spreadsheets.values.append({
+      spreadsheetId,
+      range: `${SUBMISSION_WORKSHEET_NAME}!A:H`,
+      valueInputOption: 'USER_ENTERED',
+      insertDataOption: 'INSERT_ROWS',
+      requestBody: {
+        values: [entryToSheetRow(entry)],
+      },
+    });
+  } catch (error) {
+    throw new Error(formatSubmissionSheetError(error, credentials));
+  }
 }
