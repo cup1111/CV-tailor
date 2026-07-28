@@ -1530,7 +1530,7 @@ function buildHtml(lang: Locale): string {
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error || UI.requestFailed);
                 if (data.sheetWarning) {
-                    showMessage('⚠️ ' + UI.archiveSheetWarning + '\n' + data.sheetWarning, 'error');
+                    showMessage('⚠️ ' + UI.archiveSheetWarning + '\\n' + data.sheetWarning, 'error');
                 } else {
                     celebrateConfetti();
                     showMessage('🎉 ' + UI.applySuccess, 'success');
@@ -2675,7 +2675,7 @@ function buildHtml(lang: Locale): string {
                 if (!res.ok) throw new Error(data.error || '');
                 const msg = '✓ ' + UI.archiveSuccess + (data.archived || 0) + UI.archiveSuccessSuffix;
                 if (data.sheetWarnings && data.sheetWarnings.length) {
-                    showMessage('⚠️ ' + UI.archiveSheetWarning + '\n' + data.sheetWarnings.join('\n'), 'error');
+                    showMessage('⚠️ ' + UI.archiveSheetWarning + '\\n' + data.sheetWarnings.join('\\n'), 'error');
                 } else {
                     celebrateConfetti();
                     showMessage(msg, 'success');
