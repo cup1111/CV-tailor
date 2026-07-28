@@ -15,21 +15,77 @@ export type SubmissionSheetEntry = {
 
 const URL_IN_TEXT = /https?:\/\/[^\s]+/;
 
+/** Convert YYYY-MM-DD (ledger key) to DD/MM/YYYY for the Google Sheet Date column. */
+export function formatSheetDate(dateKey: string): string {
+  const [y, m, d] = dateKey.split('-');
+  if (!y || !m || !d) return dateKey;
+  return `${d}/${m}/${y}`;
+}
+
+const DATE_COL = 3; // column D
+
+export function rowDateIsEmpty(row: string[] | undefined): boolean {
+  return !row?.[DATE_COL]?.trim();
+}
+
+/**
+ * Use the last sheet row when its Date cell is empty; otherwise append a new row.
+ */
+export function findSubmissionTargetRow(existingRows: string[][]): number {
+  if (existingRows.length <= 1) return 2;
+
+  const lastRow = existingRows[existingRows.length - 1] ?? [];
+  if (rowDateIsEmpty(lastRow)) {
+    return existingRows.length;
+  }
+  return existingRows.length + 1;
+}
+
+/** Index value for a data row (row 1 is the header). */
+export function submissionIndexForRow(targetRow: number): string {
+  return String(targetRow - 1);
+}
+
+export function buildSubmissionSheetUpdate(
+  entry: SubmissionSheetEntry,
+  existingRows: string[][],
+  targetRow: number
+): { range: string; values: string[][] } {
+  const dataColumns = entryToSheetDataColumns(entry);
+  const hasIndex = Boolean(existingRows[targetRow - 1]?.[0]?.trim());
+  if (hasIndex) {
+    return {
+      range: `B${targetRow}:H${targetRow}`,
+      values: [dataColumns],
+    };
+  }
+  return {
+    range: `A${targetRow}:H${targetRow}`,
+    values: [[submissionIndexForRow(targetRow), ...dataColumns]],
+  };
+}
+
 /**
  * Map a Submission Sheet Entry to one row on the Jobs worksheet (columns A–H).
- * A and F are left empty; B=Company, C=Job, D=Date, E=Status, G=Follow Up, H=Link.
+ * A is empty here (Index is filled by buildSubmissionSheetUpdate when needed);
+ * F is unused; B=Company, C=Job, D=Date (DD/MM/YYYY), E=Status, G=Follow Up, H=Link.
  */
 export function entryToSheetRow(entry: SubmissionSheetEntry): string[] {
   return [
-    '', // A — unused
+    '', // A — Index filled by buildSubmissionSheetUpdate when missing
     entry.company,
     entry.job,
-    entry.date,
+    formatSheetDate(entry.date),
     entry.status,
     '', // F — unused
     entry.followUp,
     entry.link,
   ];
+}
+
+/** B–H values for the Jobs worksheet (preserves column A index). */
+export function entryToSheetDataColumns(entry: SubmissionSheetEntry): string[] {
+  return entryToSheetRow(entry).slice(1);
 }
 
 function extractUrlFromJdText(jd: string): string {
@@ -118,13 +174,22 @@ export async function appendSubmissionSheetEntry(
   });
   const sheets = google.sheets({ version: 'v4', auth });
   try {
-    await sheets.spreadsheets.values.append({
+    let existingRows: string[][] = [];
+    try {
+      const existing = await sheets.spreadsheets.values.get({
+        spreadsheetId,
+        range: `${SUBMISSION_WORKSHEET_NAME}!A:H`,
+      });
+      existingRows = (existing.data.values as string[][]) ?? [];
+    } catch { /* sheet may be empty */ }
+    const targetRow = findSubmissionTargetRow(existingRows);
+    const { range, values } = buildSubmissionSheetUpdate(entry, existingRows, targetRow);
+    await sheets.spreadsheets.values.update({
       spreadsheetId,
-      range: `${SUBMISSION_WORKSHEET_NAME}!A:H`,
+      range: `${SUBMISSION_WORKSHEET_NAME}!${range}`,
       valueInputOption: 'USER_ENTERED',
-      insertDataOption: 'INSERT_ROWS',
       requestBody: {
-        values: [entryToSheetRow(entry)],
+        values,
       },
     });
   } catch (error) {
