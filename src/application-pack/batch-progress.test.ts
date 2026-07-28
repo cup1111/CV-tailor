@@ -3,6 +3,7 @@ import {
   PACK_GENERATION_STEPS,
   finishedPackStepsForJob,
   isBatchJobDone,
+  isBatchProgressIndeterminate,
   isPackGenerationInFlight,
   summarizeBatchProgress,
   type BatchJobSnapshot,
@@ -126,5 +127,78 @@ describe('batch-progress', () => {
     expect(summary.inFlight).toBe(false);
     expect(summary.stepFinished).toBe(14);
     expect(summary.jobFailed).toBe(1);
+  });
+
+  it('uses indeterminate progress when the batch is open but no step is running', () => {
+    const waiting = summarizeBatchProgress([
+      job('a', {
+        companyResearch: 'pending',
+        painPoints: 'pending',
+        mapping: 'pending',
+        experienceBullets: 'pending',
+        summary: 'pending',
+        coverLetter: 'pending',
+        review: 'pending',
+      }),
+    ]);
+    expect(waiting.inFlight).toBe(false);
+    expect(waiting.allDone).toBe(false);
+    expect(isBatchProgressIndeterminate(waiting)).toBe(true);
+  });
+
+  it('uses indeterminate progress at 0% even while a step is in flight', () => {
+    const starting = summarizeBatchProgress([
+      job('a', {
+        companyResearch: 'in_progress',
+        painPoints: 'pending',
+        mapping: 'pending',
+        experienceBullets: 'pending',
+        summary: 'pending',
+        coverLetter: 'pending',
+        review: 'pending',
+      }),
+    ]);
+    expect(starting.inFlight).toBe(true);
+    expect(starting.stepFinished).toBe(0);
+    expect(isBatchProgressIndeterminate(starting)).toBe(true);
+  });
+
+  it('uses indeterminate progress between sequential jobs when nothing is in flight', () => {
+    const gap = summarizeBatchProgress([
+      job('done', { review: 'completed' }),
+      job('next', {
+        companyResearch: 'pending',
+        painPoints: 'pending',
+        mapping: 'pending',
+        experienceBullets: 'pending',
+        summary: 'pending',
+        coverLetter: 'pending',
+        review: 'pending',
+      }),
+    ]);
+    expect(gap.inFlight).toBe(false);
+    expect(gap.stepFinished).toBe(7);
+    expect(gap.allDone).toBe(false);
+    expect(isBatchProgressIndeterminate(gap)).toBe(true);
+  });
+
+  it('uses determinate progress once finished steps exist and a step is running', () => {
+    const mid = summarizeBatchProgress([
+      job('a', {
+        companyResearch: 'completed',
+        painPoints: 'in_progress',
+        mapping: 'pending',
+        experienceBullets: 'pending',
+        summary: 'pending',
+        coverLetter: 'pending',
+        review: 'pending',
+      }),
+    ]);
+    expect(isBatchProgressIndeterminate(mid)).toBe(false);
+  });
+
+  it('does not use indeterminate progress after the batch ends', () => {
+    const done = summarizeBatchProgress([job('a', { review: 'completed' })]);
+    expect(isBatchProgressIndeterminate(done)).toBe(false);
   });
 });

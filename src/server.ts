@@ -895,6 +895,12 @@ function buildHtml(lang: Locale): string {
             border-radius: 999px;
             transition: width 0.35s ease;
         }
+        .batch-progress-bar.indeterminate .batch-progress-bar-fill,
+        .regenerate-bar.indeterminate .regenerate-bar-fill {
+            width: 32% !important;
+            transition: none;
+            animation: progressIndeterminate 1.15s ease-in-out infinite;
+        }
         .batch-status.done .batch-progress-bar-fill {
             background: #22c55e;
         }
@@ -925,6 +931,10 @@ function buildHtml(lang: Locale): string {
                 animation: none !important;
                 transition: none !important;
             }
+        }
+        @keyframes progressIndeterminate {
+            0% { transform: translateX(-120%); }
+            100% { transform: translateX(320%); }
         }
         @keyframes spin {
             0% { transform: rotate(0deg); }
@@ -1719,13 +1729,21 @@ function buildHtml(lang: Locale): string {
             };
         }
 
+        function isBatchProgressIndeterminate(summary) {
+            if (!summary || summary.allDone) return false;
+            return summary.stepFinished === 0 || !summary.inFlight;
+        }
+
         function packStepProgressHtml(job) {
             if (!job || job.progress || job.packComplete || isBatchJobDone(job)) return '';
             const finished = finishedPackStepsForJob(job);
             if (finished === 0 && !isPackGenerationInFlight(job)) return '';
             const pct = Math.round((finished / PACK_GENERATION_STEPS.length) * 100);
+            const indeterminate = finished === 0;
             const label = UI.statusGenerating + ' (' + finished + '/' + PACK_GENERATION_STEPS.length + ')';
-            return '<div class="pack-step-progress regenerate-progress"><div class="regenerate-label">' + label + '</div><div class="regenerate-bar"><div class="regenerate-bar-fill" style="width:' + pct + '%"></div></div></div>';
+            const barClass = indeterminate ? 'regenerate-bar indeterminate' : 'regenerate-bar';
+            const width = indeterminate ? '32%' : (pct + '%');
+            return '<div class="pack-step-progress regenerate-progress"><div class="regenerate-label">' + label + '</div><div class="' + barClass + '"><div class="regenerate-bar-fill" style="width:' + width + '"></div></div></div>';
         }
 
         function setGenerateControlsDisabled(disabled) {
@@ -1784,13 +1802,16 @@ function buildHtml(lang: Locale): string {
             const primary = document.getElementById('batchStatusPrimary');
             const secondary = document.getElementById('batchStatusSecondary');
             const fill = document.getElementById('batchStatusBarFill');
+            const bar = fill ? fill.parentElement : null;
+            const indeterminate = isBatchProgressIndeterminate(summary);
             if (icon) icon.style.display = summary.allDone ? 'none' : 'inline-block';
             if (title) title.textContent = summary.allDone ? UI.batchProgressDone : UI.batchProgressRunning;
             const stepPct = summary.stepTotal ? Math.round((summary.stepFinished / summary.stepTotal) * 100) : 0;
             if (primary) {
                 primary.textContent = UI.batchProgressSteps + ' ' + summary.stepFinished + '/' + summary.stepTotal + ' (' + stepPct + '%)';
             }
-            if (fill) fill.style.width = stepPct + '%';
+            if (bar) bar.classList.toggle('indeterminate', indeterminate);
+            if (fill) fill.style.width = indeterminate ? '32%' : (stepPct + '%');
             if (secondary) {
                 let jobLine = UI.batchProgressJobs + ' ' + summary.jobFinished + '/' + summary.jobTotal;
                 if (summary.jobFailed > 0) jobLine += ' (' + summary.jobFailed + ' ' + UI.batchProgressFailed + ')';

@@ -97,3 +97,13 @@ export function summarizeBatchProgress(jobs: BatchJobSnapshot[]): BatchProgressS
     allDone: jobTotal > 0 && jobFinished === jobTotal,
   };
 }
+
+/**
+ * True when the batch UI should show a moving indeterminate bar:
+ * still open, but either no step has finished yet (0%) or no step is currently running
+ * (startup gap / between sequential jobs).
+ */
+export function isBatchProgressIndeterminate(summary: BatchProgressSummary): boolean {
+  if (summary.allDone) return false;
+  return summary.stepFinished === 0 || !summary.inFlight;
+}
