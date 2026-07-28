@@ -98,8 +98,9 @@ describe('buildSubmissionSheetEntry', () => {
 });
 
 describe('formatSheetDate', () => {
-  it('converts YYYY-MM-DD to DD/MM/YYYY', () => {
-    expect(formatSheetDate('2026-07-28')).toBe('28/07/2026');
+  it('converts YYYY-MM-DD to M/D/YYYY for the en_US sheet locale', () => {
+    expect(formatSheetDate('2026-07-28')).toBe('7/28/2026');
+    expect(formatSheetDate('2025-10-01')).toBe('10/1/2025');
   });
 });
 
@@ -162,7 +163,7 @@ describe('buildSubmissionSheetUpdate', () => {
     const rows = [header, ['2']];
     expect(buildSubmissionSheetUpdate(entry, rows, 2)).toEqual({
       range: 'B2:H2',
-      values: [['Acme', 'Engineer', '28/07/2026', 'submitted', '', 'following', 'https://example.com/job']],
+      values: [['Acme', 'Engineer', '7/28/2026', 'submitted', '', 'following', 'https://example.com/job']],
     });
   });
 
@@ -170,7 +171,7 @@ describe('buildSubmissionSheetUpdate', () => {
     const rows = [header, ['1', 'Filled', 'Role', '10/1/2025', 'submitted', '', 'following', 'https://a'], []];
     expect(buildSubmissionSheetUpdate(entry, rows, 3)).toEqual({
       range: 'A3:H3',
-      values: [['2', 'Acme', 'Engineer', '28/07/2026', 'submitted', '', 'following', 'https://example.com/job']],
+      values: [['2', 'Acme', 'Engineer', '7/28/2026', 'submitted', '', 'following', 'https://example.com/job']],
     });
   });
 });
@@ -197,7 +198,7 @@ describe('entryToSheetRow', () => {
       '',
       'Acme',
       'Engineer',
-      '28/07/2026',
+      '7/28/2026',
       'submitted',
       '',
       'following',

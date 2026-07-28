@@ -15,11 +15,15 @@ export type SubmissionSheetEntry = {
 
 const URL_IN_TEXT = /https?:\/\/[^\s]+/;
 
-/** Convert YYYY-MM-DD (ledger key) to DD/MM/YYYY for the Google Sheet Date column. */
+/**
+ * Convert YYYY-MM-DD (ledger / heatmap key) to the Jobs sheet Date display form.
+ * The spreadsheet locale is en_US, so USER_ENTERED must be M/D/YYYY (e.g. 7/29/2026).
+ * DD/MM/YYYY is stored as text and breaks date-typed columns / charts.
+ */
 export function formatSheetDate(dateKey: string): string {
   const [y, m, d] = dateKey.split('-');
   if (!y || !m || !d) return dateKey;
-  return `${d}/${m}/${y}`;
+  return `${Number(m)}/${Number(d)}/${y}`;
 }
 
 const DATE_COL = 3; // column D
@@ -68,7 +72,7 @@ export function buildSubmissionSheetUpdate(
 /**
  * Map a Submission Sheet Entry to one row on the Jobs worksheet (columns A–H).
  * A is empty here (Index is filled by buildSubmissionSheetUpdate when needed);
- * F is unused; B=Company, C=Job, D=Date (DD/MM/YYYY), E=Status, G=Follow Up, H=Link.
+ * F is unused; B=Company, C=Job, D=Date (M/D/YYYY for en_US sheet), E=Status, G=Follow Up, H=Link.
  */
 export function entryToSheetRow(entry: SubmissionSheetEntry): string[] {
   return [
